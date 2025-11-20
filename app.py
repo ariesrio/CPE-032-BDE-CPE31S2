@@ -312,9 +312,9 @@ def apply_aggregation(df, aggregation):
 def display_real_time_view(config, refresh_interval=15):
     """
     Page 1: Real-time Streaming View
-    Displays real-time data visualization from Kafka
+    Displays real-time stock price data from Kafka
     """
-    st.header("📈 Real-time Streaming Dashboard")
+    st.header("💹 Real-time Stock Market Stream")
     
     # Refresh status
     refresh_state = st.session_state.refresh_state
@@ -337,36 +337,48 @@ def display_real_time_view(config, refresh_interval=15):
         st.success(f"{freshness_color} Data updated {data_freshness.total_seconds():.0f} seconds ago")
         
         # Real-time data metrics
-        st.subheader("📊 Live Data Metrics")
+        st.subheader("📊 Live Market Metrics")
         if not real_time_data.empty:
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("Records Received", len(real_time_data))
+                st.metric("Data Points", len(real_time_data))
             with col2:
-                st.metric("Latest Value", f"{real_time_data['value'].iloc[-1]:.2f}")
+                latest_stock = real_time_data.iloc[-1]
+                latest_price = f"${latest_stock['value']:.2f}"
+                latest_change = latest_stock.get('change_percent', 'N/A')
+                st.metric(
+                    f"{latest_stock.get('sensor_id', 'Stock')} Price", 
+                    latest_price,
+                    f"{latest_change}%" if latest_change != 'N/A' else None
+                )
             with col3:
-                st.metric("Data Range", f"{real_time_data['timestamp'].min().strftime('%H:%M')} - {real_time_data['timestamp'].max().strftime('%H:%M')}")
+                st.metric("Unique Stocks", real_time_data['sensor_id'].nunique() if 'sensor_id' in real_time_data.columns else 'N/A')
+            with col4:
+                avg_price = real_time_data['value'].mean()
+                st.metric("Avg Price", f"${avg_price:.2f}")
         
         # Real-time chart
-        st.subheader("📈 Real-time Trend")
+        st.subheader("📈 Live Stock Prices")
         
         if not real_time_data.empty:
-            # COMPLETED TODO: Customize this chart for your specific data
+            # Stock price chart with color-coded lines by stock symbol
             fig = px.line(
                 real_time_data,
                 x='timestamp',
                 y='value',
-                title=f"Real-time Data Stream (Last {len(real_time_data)} records)",
-                labels={'value': 'Sensor Value', 'timestamp': 'Time'},
+                color='sensor_id' if 'sensor_id' in real_time_data.columns else None,
+                title=f"Real-time Stock Prices (Last {len(real_time_data)} updates)",
+                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'sensor_id': 'Stock Symbol'},
                 template='plotly_white'
             )
             fig.update_layout(
                 xaxis_title="Time",
-                yaxis_title="Value",
-                hovermode='x unified'
+                yaxis_title="Price (USD)",
+                hovermode='x unified',
+                legend_title_text='Stock Symbol'
             )
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
             
             # Raw data table with auto-refresh
             with st.expander("📋 View Raw Data"):
@@ -384,9 +396,9 @@ def display_real_time_view(config, refresh_interval=15):
 def display_historical_view(config):
     """
     Page 2: Historical Data Analysis
-    Displays historical data queried from MongoDB
+    Displays historical stock price data queried from MongoDB
     """
-    st.header("📊 Historical Data Analysis")
+    st.header("📊 Historical Stock Market Analysis")
     
     # Interactive controls
     st.subheader("Data Filters")
@@ -402,7 +414,7 @@ def display_historical_view(config):
     with col2:
         metric_type = st.multiselect(
             "Metric Type",
-            ["temperature", "humidity", "pressure", "all"],
+            ["stock_price", "all"],
             default=["all"],
             help="Select metric types to display"
         )
@@ -451,11 +463,11 @@ def display_historical_view(config):
         
         with col3:
             if 'value' in historical_data.columns:
-                st.metric("Average Value", f"{historical_data['value'].mean():.2f}")
+                st.metric("Average Price", f"${historical_data['value'].mean():.2f}")
         
         with col4:
             if 'sensor_id' in historical_data.columns:
-                st.metric("Unique Sensors", historical_data['sensor_id'].nunique())
+                st.metric("Stocks Tracked", historical_data['sensor_id'].nunique())
         
         # Historical trend visualization
         st.subheader("📊 Historical Trends")
@@ -466,49 +478,69 @@ def display_historical_view(config):
                 historical_data,
                 x='timestamp',
                 y='value',
-                color='metric_type' if 'metric_type' in historical_data.columns else None,
-                title=f"Historical Data Trends - {time_range} ({aggregation} aggregation)",
-                labels={'value': 'Sensor Value', 'timestamp': 'Time'},
+                color='sensor_id' if 'sensor_id' in historical_data.columns else None,
+                title=f"Historical Stock Prices - {time_range} ({aggregation} aggregation)",
+                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'sensor_id': 'Stock Symbol'},
                 template='plotly_white'
             )
             fig.update_layout(
                 xaxis_title="Time",
-                yaxis_title="Value",
+                yaxis_title="Price (USD)",
                 hovermode='x unified',
-                height=500
+                height=500,
+                legend_title_text='Stock Symbol'
             )
             st.plotly_chart(fig, use_container_width=True)
             
             # Distribution chart
-            if 'metric_type' in historical_data.columns:
-                st.subheader("📉 Value Distribution by Metric Type")
+            if 'sensor_id' in historical_data.columns and historical_data['sensor_id'].nunique() > 1:
+                st.subheader("📉 Price Distribution by Stock")
                 fig_box = px.box(
                     historical_data,
-                    x='metric_type',
+                    x='sensor_id',
                     y='value',
-                    title="Value Distribution Across Metric Types",
+                    title="Stock Price Distribution",
+                    labels={'value': 'Price (USD)', 'sensor_id': 'Stock Symbol'},
                     template='plotly_white'
                 )
                 st.plotly_chart(fig_box, use_container_width=True)
             
-            # Sensor comparison if multiple sensors
+            # Stock comparison
             if 'sensor_id' in historical_data.columns and historical_data['sensor_id'].nunique() > 1:
-                st.subheader("🔍 Sensor Comparison")
-                fig_sensor = px.line(
-                    historical_data,
-                    x='timestamp',
-                    y='value',
-                    color='sensor_id',
-                    facet_col='metric_type' if 'metric_type' in historical_data.columns else None,
-                    title="Sensor-wise Data Comparison",
-                    template='plotly_white'
-                )
-                st.plotly_chart(fig_sensor, use_container_width=True)
+                st.subheader("🔍 Stock Performance Comparison")
+                
+                # Calculate percentage change from first value for each stock
+                if aggregation == 'raw':
+                    comparison_data = historical_data.copy()
+                    comparison_data['normalized'] = comparison_data.groupby('sensor_id')['value'].transform(
+                        lambda x: ((x / x.iloc[0]) - 1) * 100 if len(x) > 0 and x.iloc[0] != 0 else 0
+                    )
+                    
+                    fig_comp = px.line(
+                        comparison_data,
+                        x='timestamp',
+                        y='normalized',
+                        color='sensor_id',
+                        title="Normalized Stock Performance (% Change from Start)",
+                        labels={'normalized': 'Change (%)', 'timestamp': 'Time', 'sensor_id': 'Stock Symbol'},
+                        template='plotly_white'
+                    )
+                    fig_comp.update_layout(
+                        xaxis_title="Time",
+                        yaxis_title="Percentage Change (%)",
+                        hovermode='x unified',
+                        legend_title_text='Stock Symbol'
+                    )
+                    st.plotly_chart(fig_comp, use_container_width=True)
         
         # Statistical summary
         with st.expander("📊 Statistical Summary"):
             if 'value' in historical_data.columns:
-                summary_df = historical_data.groupby('metric_type')['value'].describe() if 'metric_type' in historical_data.columns else historical_data['value'].describe()
+                if 'sensor_id' in historical_data.columns:
+                    summary_df = historical_data.groupby('sensor_id')['value'].describe()
+                    summary_df.columns = ['Count', 'Mean Price', 'Std Dev', 'Min Price', '25%', '50% (Median)', '75%', 'Max Price']
+                else:
+                    summary_df = historical_data['value'].describe()
                 st.dataframe(summary_df, use_container_width=True)
         
         # Raw data table
@@ -529,17 +561,20 @@ def main():
     """
     COMPLETED TODO: Customize the main application flow as needed
     """
-    st.title("🚀 Streaming Data Dashboard")
+    st.title("📈 Stock Market Streaming Dashboard")
     
-    with st.expander("📋 Project Instructions"):
+    with st.expander("📋 Project Information"):
         st.markdown("""
-        **STUDENT PROJECT TEMPLATE**
+        **BIG DATA STREAMING DASHBOARD**
         
-        ### Implementation Required:
-        - **Real-time Data**: Connect to Kafka and process streaming data
-        - **Historical Data**: Query from HDFS/MongoDB
-        - **Visualizations**: Create meaningful charts
-        - **Error Handling**: Implement robust error handling
+        ### Features:
+        - **Real-time Stock Data**: Live stock prices via Alpha Vantage API
+        - **Kafka Streaming**: Real-time message processing
+        - **MongoDB Storage**: Historical data persistence
+        - **Interactive Charts**: Dynamic visualizations with filters
+        
+        **Data Source:** Alpha Vantage API  
+        **Stocks Tracked:** AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, JPM
         """)
     
     # Initialize session state for refresh management
@@ -583,7 +618,7 @@ def main():
     st.sidebar.metric("Last Refresh", st.session_state.refresh_state['last_refresh'].strftime("%H:%M:%S"))
     
     # Create tabs for different views
-    tab1, tab2 = st.tabs(["📈 Real-time Streaming", "📊 Historical Data"])
+    tab1, tab2 = st.tabs(["💹 Live Stock Prices", "📊 Historical Analysis"])
     
     with tab1:
         display_real_time_view(config, refresh_interval)

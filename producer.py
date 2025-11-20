@@ -29,20 +29,22 @@ class StreamingDataProducer:
     This class handles Kafka connection, realistic data generation, and message sending
     """
     
-    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/", mongo_db: str = "streaming_data"):
+    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/", mongo_db: str = "streaming_data", api_key: str = None):
         """
-        Initialize Kafka producer configuration with stateful data generation
+        Initialize Kafka producer configuration with stock market API integration
         
         Parameters:
         - bootstrap_servers: Kafka broker addresses (e.g., "localhost:9092")
         - topic: Kafka topic to produce messages to
         - mongo_uri: MongoDB connection URI
         - mongo_db: MongoDB database name
+        - api_key: Alpha Vantage API key for stock market data
         """
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.mongo_uri = mongo_uri
         self.mongo_db = mongo_db
+        self.api_key = api_key or "demo"  # Use demo key if none provided
         
         # Kafka producer configuration
         self.producer_config = {
@@ -56,31 +58,26 @@ class StreamingDataProducer:
             # 'linger_ms': 10,  # Optional: Wait for batch fill
         }
         
-        # Stateful data generation attributes
-        self.sensor_states = {}  # Track state for each sensor
-        self.time_counter = 0    # Track time progression
-        self.base_time = datetime.utcnow()
-        
-        # Expanded sensor pool with metadata
-        self.sensors = [
-            {"id": "sensor_001", "location": "server_room_a", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_002", "location": "server_room_b", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_003", "location": "outdoor_north", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_004", "location": "lab_1", "type": "humidity", "unit": "percent"},
-            {"id": "sensor_005", "location": "lab_2", "type": "humidity", "unit": "percent"},
-            {"id": "sensor_006", "location": "control_room", "type": "pressure", "unit": "hPa"},
-            {"id": "sensor_007", "location": "factory_floor", "type": "pressure", "unit": "hPa"},
-            {"id": "sensor_008", "location": "warehouse", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_009", "location": "office_area", "type": "humidity", "unit": "percent"},
-            {"id": "sensor_010", "location": "basement", "type": "pressure", "unit": "hPa"},
+        # Stock symbols to track
+        self.stock_symbols = [
+            {"symbol": "AAPL", "name": "Apple Inc."},
+            {"symbol": "MSFT", "name": "Microsoft Corporation"},
+            {"symbol": "GOOGL", "name": "Alphabet Inc."},
+            {"symbol": "AMZN", "name": "Amazon.com Inc."},
+            {"symbol": "TSLA", "name": "Tesla Inc."},
+            {"symbol": "META", "name": "Meta Platforms Inc."},
+            {"symbol": "NVDA", "name": "NVIDIA Corporation"},
+            {"symbol": "JPM", "name": "JPMorgan Chase & Co."},
         ]
         
-        # Metric type configurations
-        self.metric_ranges = {
-            "temperature": {"min": -10, "max": 45, "daily_amplitude": 8, "trend_range": (-0.5, 0.5)},
-            "humidity": {"min": 20, "max": 95, "daily_amplitude": 15, "trend_range": (-0.2, 0.2)},
-            "pressure": {"min": 980, "max": 1040, "daily_amplitude": 5, "trend_range": (-0.1, 0.1)},
-        }
+        # API call tracking to avoid rate limits (Alpha Vantage free tier: 5 calls/min, 500 calls/day)
+        self.last_api_call = None
+        self.api_call_delay = 12  # seconds between API calls (5 per minute = 12 seconds)
+        self.current_symbol_index = 0
+        
+        # Cache for stock data
+        self.stock_cache = {}
+        self.cache_duration = 60  # Cache data for 60 seconds
         
         # Initialize Kafka producer
         try:
@@ -107,92 +104,151 @@ class StreamingDataProducer:
             self.db = None
             self.collection = None
 
+    def fetch_stock_data(self, symbol: str) -> Dict[str, Any]:
+        """
+        Fetch real-time stock data from Alpha Vantage API
+        
+        Parameters:
+        - symbol: Stock ticker symbol (e.g., "AAPL", "MSFT")
+        
+        Returns:
+        Dictionary with stock data or None if fetch fails
+        """
+        # Check cache first
+        current_time = datetime.utcnow()
+        cache_key = symbol
+        
+        if cache_key in self.stock_cache:
+            cached_data, cache_time = self.stock_cache[cache_key]
+            if (current_time - cache_time).total_seconds() < self.cache_duration:
+                print(f"Using cached data for {symbol}")
+                return cached_data
+        
+        # Respect API rate limits
+        if self.last_api_call:
+            elapsed = (current_time - self.last_api_call).total_seconds()
+            if elapsed < self.api_call_delay:
+                wait_time = self.api_call_delay - elapsed
+                print(f"Rate limit: waiting {wait_time:.1f} seconds...")
+                time.sleep(wait_time)
+        
+        try:
+            # Alpha Vantage API endpoint for real-time quote
+            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={self.api_key}"
+            
+            print(f"Fetching stock data for {symbol} from Alpha Vantage API...")
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            self.last_api_call = datetime.utcnow()
+            
+            # Check for API errors
+            if "Error Message" in data:
+                print(f"API Error: {data['Error Message']}")
+                return None
+            
+            if "Note" in data:
+                print(f"API Rate Limit: {data['Note']}")
+                return None
+            
+            # Extract quote data
+            if "Global Quote" in data and data["Global Quote"]:
+                quote = data["Global Quote"]
+                
+                stock_data = {
+                    "symbol": symbol,
+                    "price": float(quote.get("05. price", 0)),
+                    "volume": float(quote.get("06. volume", 0)),
+                    "change": float(quote.get("09. change", 0)),
+                    "change_percent": quote.get("10. change percent", "0%").replace("%", ""),
+                    "latest_trading_day": quote.get("07. latest trading day", ""),
+                }
+                
+                # Cache the result
+                self.stock_cache[cache_key] = (stock_data, current_time)
+                
+                return stock_data
+            else:
+                print(f"No quote data available for {symbol}")
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching stock data for {symbol}: {e}")
+            return None
+        except (KeyError, ValueError) as e:
+            print(f"Error parsing stock data for {symbol}: {e}")
+            return None
+
     def generate_sample_data(self) -> Dict[str, Any]:
         """
-        Generate realistic streaming data with stateful patterns
+        Generate streaming data from real stock market API
         
-        This function creates continuously changing records with realistic patterns:
-        - Daily cycles using sine waves
-        - Gradual trends and realistic noise
-        - Multiple metric types (temperature, humidity, pressure)
-        - Temporal consistency with progressive timestamps
+        Fetches real-time stock prices from Alpha Vantage API and formats them
+        for the streaming dashboard.
         
         Expected data format (must include these fields for dashboard compatibility):
         {
             "timestamp": "2023-10-01T12:00:00Z",  # ISO format timestamp
-            "value": 123.45,                      # Numeric measurement value
-            "metric_type": "temperature",         # Type of metric (temperature, humidity, etc.)
-            "sensor_id": "sensor_001",            # Unique identifier for data source
-            "location": "server_room_a",          # Sensor location
-            "unit": "celsius",                    # Measurement unit
+            "value": 123.45,                      # Stock price
+            "metric_type": "stock_price",         # Type of metric
+            "sensor_id": "AAPL",                  # Stock symbol
+            "location": "Apple Inc.",             # Company name
+            "unit": "USD",                        # Currency unit
         }
         """
         
-        # Select a random sensor from the expanded pool
-        sensor = random.choice(self.sensors)
-        sensor_id = sensor["id"]
-        metric_type = sensor["type"]
+        # Rotate through stock symbols
+        stock_info = self.stock_symbols[self.current_symbol_index]
+        self.current_symbol_index = (self.current_symbol_index + 1) % len(self.stock_symbols)
         
-        # Initialize sensor state if not exists
-        if sensor_id not in self.sensor_states:
-            config = self.metric_ranges[metric_type]
-            base_value = random.uniform(config["min"], config["max"])
-            trend = random.uniform(config["trend_range"][0], config["trend_range"][1])
-            phase_offset = random.uniform(0, 2 * 3.14159)  # Random phase for daily cycle
-            
-            self.sensor_states[sensor_id] = {
-                "base_value": base_value,
-                "trend": trend,
-                "phase_offset": phase_offset,
-                "last_value": base_value,
-                "message_count": 0
+        symbol = stock_info["symbol"]
+        name = stock_info["name"]
+        
+        # Fetch real stock data from API
+        stock_data = self.fetch_stock_data(symbol)
+        
+        if stock_data and stock_data["price"] > 0:
+            # Use real API data
+            sample_data = {
+                "timestamp": datetime.utcnow().isoformat() + 'Z',
+                "value": round(stock_data["price"], 2),
+                "metric_type": "stock_price",
+                "sensor_id": symbol,
+                "location": name,
+                "unit": "USD",
+                "volume": stock_data["volume"],
+                "change": stock_data["change"],
+                "change_percent": stock_data["change_percent"],
             }
-        
-        state = self.sensor_states[sensor_id]
-        
-        # Calculate progressive timestamp with configurable intervals
-        current_time = self.base_time + timedelta(seconds=self.time_counter)
-        self.time_counter += random.uniform(0.5, 2.0)  # Variable intervals for realism
-        
-        # Generate realistic value with patterns
-        config = self.metric_ranges[metric_type]
-        
-        # Daily cycle using sine wave (24-hour period)
-        hours_in_day = 24
-        current_hour = current_time.hour + current_time.minute / 60
-        daily_cycle = math.sin(2 * 3.14159 * current_hour / hours_in_day + state["phase_offset"])
-        
-        # Apply trend over time (slow drift)
-        trend_effect = state["trend"] * (state["message_count"] / 100.0)
-        
-        # Add realistic noise (small random variations)
-        noise = random.uniform(-config["daily_amplitude"] * 0.1, config["daily_amplitude"] * 0.1)
-        
-        # Calculate final value with bounds checking
-        base_value = state["base_value"]
-        daily_variation = daily_cycle * config["daily_amplitude"]
-        raw_value = base_value + daily_variation + trend_effect + noise
-        
-        # Ensure value stays within reasonable bounds
-        bounded_value = max(config["min"], min(config["max"], raw_value))
-        
-        # Update state
-        state["last_value"] = bounded_value
-        state["message_count"] += 1
-        
-        # Occasionally introduce small trend changes for realism
-        if random.random() < 0.01:  # 1% chance per message
-            state["trend"] = random.uniform(config["trend_range"][0], config["trend_range"][1])
-        
-        # Generate realistic data structure
-        sample_data = {
-            "timestamp": current_time.isoformat() + 'Z',
-            "value": round(bounded_value, 2),
-            "metric_type": metric_type,
-            "sensor_id": sensor_id,
-            "location": sensor["location"],
-            "unit": sensor["unit"],
-        }
+            print(f"📈 {symbol}: ${stock_data['price']:.2f} ({stock_data['change_percent']}%)")
+        else:
+            # Fallback to simulated data if API fails
+            print(f"⚠️  API unavailable, using simulated data for {symbol}")
+            # Generate realistic stock price (random walk from previous value)
+            if symbol not in self.stock_cache:
+                base_price = random.uniform(50, 500)  # Initial price
+            else:
+                base_price = self.stock_cache.get(symbol, ({"price": 100}, None))[0].get("price", 100)
+            
+            # Random walk: small change from previous price
+            change_percent = random.uniform(-2, 2)  # -2% to +2% change
+            new_price = base_price * (1 + change_percent / 100)
+            
+            sample_data = {
+                "timestamp": datetime.utcnow().isoformat() + 'Z',
+                "value": round(new_price, 2),
+                "metric_type": "stock_price",
+                "sensor_id": symbol,
+                "location": name,
+                "unit": "USD",
+                "volume": random.randint(1000000, 50000000),
+                "change": round(new_price - base_price, 2),
+                "change_percent": f"{change_percent:.2f}",
+            }
+            
+            # Update cache with simulated data
+            self.stock_cache[symbol] = ({"price": new_price}, datetime.utcnow())
         
         return sample_data
 
@@ -402,6 +458,13 @@ def parse_arguments():
         help='MongoDB database name (default: streaming_data)'
     )
     
+    parser.add_argument(
+        '--api-key',
+        type=str,
+        default='demo',
+        help='Alpha Vantage API key (default: demo). Get free key at https://www.alphavantage.co/support/#api-key'
+    )
+    
     return parser.parse_args()
 
 
@@ -417,19 +480,20 @@ def main():
     """
     
     print("=" * 60)
-    print("STREAMING DATA PRODUCER")
-    print("Implementation Complete: MongoDB + Kafka Integration")
+    print("STREAMING DATA PRODUCER - STOCK MARKET DATA")
+    print("Data Source: Alpha Vantage API")
     print("=" * 60)
     
     # Parse command-line arguments
     args = parse_arguments()
     
-    # Initialize producer with MongoDB configuration
+    # Initialize producer with MongoDB and API configuration
     producer = StreamingDataProducer(
         bootstrap_servers=args.bootstrap_servers,
         topic=args.topic,
         mongo_uri=args.mongo_uri,
-        mongo_db=args.mongo_db
+        mongo_db=args.mongo_db,
+        api_key=args.api_key
     )
     
     # Start producing stream
