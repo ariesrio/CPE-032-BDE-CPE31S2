@@ -223,7 +223,8 @@ def query_historical_data(config, time_range="1h", metrics=None, aggregation="ra
         }
         
         time_delta = time_map.get(time_range, timedelta(hours=1))
-        start_time = datetime.now() - time_delta
+        # Use UTC time to match MongoDB stored timestamps
+        start_time = datetime.utcnow() - time_delta
         
         # Build query
         query = {"timestamp": {"$gte": start_time}}
@@ -319,9 +320,14 @@ def display_real_time_view(config, refresh_interval=15):
     refresh_state = st.session_state.refresh_state
     st.info(f"**Auto-refresh:** {'🟢 Enabled' if refresh_state['auto_refresh'] else '🔴 Disabled'} - Updates every {refresh_interval} seconds")
     
-    # Loading indicator for data consumption
-    with st.spinner("Fetching real-time data from Kafka..."):
-        real_time_data = consume_kafka_data(config)
+    # Fetch data without spinner to avoid screen darkening
+    real_time_data = consume_kafka_data(config)
+    
+    # Cache the data in session state to persist across tab switches
+    if real_time_data is not None and not real_time_data.empty:
+        st.session_state['real_time_data'] = real_time_data
+    elif 'real_time_data' in st.session_state:
+        real_time_data = st.session_state['real_time_data']
     
     if real_time_data is not None:
         # Data freshness indicator
@@ -410,7 +416,8 @@ def display_historical_view(config):
     
     # Query button
     if st.button("🔍 Query Historical Data", type="primary"):
-        with st.spinner("Querying MongoDB for historical data..."):
+        # Query without spinner to avoid screen darkening
+        with st.status("Querying MongoDB for historical data...", expanded=True) as status:
             historical_data = query_historical_data(
                 config,
                 time_range=time_range,
@@ -418,6 +425,10 @@ def display_historical_view(config):
                 aggregation=aggregation
             )
             st.session_state['historical_data'] = historical_data
+            if historical_data is not None and not historical_data.empty:
+                status.update(label="Query completed!", state="complete")
+            else:
+                status.update(label="Query completed - No data found", state="complete")
     
     # Display cached data if available
     if 'historical_data' in st.session_state:
