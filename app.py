@@ -95,7 +95,7 @@ def generate_sample_data():
         'timestamp': times,
         'value': [100 + i * 0.5 + (i % 10) for i in range(100)],
         'metric_type': ['temperature'] * 100,
-        'sensor_id': ['sensor_1'] * 100
+        'stock_symbol': ['sensor_1'] * 100
     })
     
     return sample_data
@@ -294,13 +294,13 @@ def apply_aggregation(df, aggregation):
         df_agg = df.groupby([
             pd.Grouper(key='timestamp', freq=freq),
             'metric_type',
-            'sensor_id'
+            'stock_symbol'
         ]).agg({
             'value': ['mean', 'min', 'max', 'std', 'count']
         }).reset_index()
         
         # Flatten column names
-        df_agg.columns = ['timestamp', 'metric_type', 'sensor_id', 'value', 'min_value', 'max_value', 'std_value', 'count']
+        df_agg.columns = ['timestamp', 'metric_type', 'stock_symbol', 'value', 'min_value', 'max_value', 'std_value', 'count']
         
         return df_agg
         
@@ -348,12 +348,12 @@ def display_real_time_view(config, refresh_interval=15):
                 latest_price = f"${latest_stock['value']:.2f}"
                 latest_change = latest_stock.get('change_percent', 'N/A')
                 st.metric(
-                    f"{latest_stock.get('sensor_id', 'Stock')} Price", 
+                    f"{latest_stock.get('stock_symbol', 'Stock')} Price", 
                     latest_price,
                     f"{latest_change}%" if latest_change != 'N/A' else None
                 )
             with col3:
-                st.metric("Unique Stocks", real_time_data['sensor_id'].nunique() if 'sensor_id' in real_time_data.columns else 'N/A')
+                st.metric("Unique Stocks", real_time_data['stock_symbol'].nunique() if 'stock_symbol' in real_time_data.columns else 'N/A')
             with col4:
                 avg_price = real_time_data['value'].mean()
                 st.metric("Avg Price", f"${avg_price:.2f}")
@@ -367,16 +367,16 @@ def display_real_time_view(config, refresh_interval=15):
                 real_time_data,
                 x='timestamp',
                 y='value',
-                color='sensor_id' if 'sensor_id' in real_time_data.columns else None,
+                color='stock_symbol' if 'stock_symbol' in real_time_data.columns else None,
                 title=f"Real-time Stock Prices (Last {len(real_time_data)} updates)",
-                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'sensor_id': 'Stock Symbol'},
+                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
                 template='plotly_white'
             )
             fig.update_layout(
                 xaxis_title="Time",
                 yaxis_title="Price (USD)",
                 hovermode='x unified',
-                legend_title_text='Stock Symbol'
+                legend_title_text='Stock'
             )
             st.plotly_chart(fig, use_container_width=True)
             
@@ -428,19 +428,20 @@ def display_historical_view(config):
     
     # Query button
     if st.button("🔍 Query Historical Data", type="primary"):
-        # Query without spinner to avoid screen darkening
-        with st.status("Querying MongoDB for historical data...", expanded=True) as status:
-            historical_data = query_historical_data(
-                config,
-                time_range=time_range,
-                metrics=metric_type,
-                aggregation=aggregation
-            )
-            st.session_state['historical_data'] = historical_data
-            if historical_data is not None and not historical_data.empty:
-                status.update(label="Query completed!", state="complete")
-            else:
-                status.update(label="Query completed - No data found", state="complete")
+        # Query data and update state
+        historical_data = query_historical_data(
+            config,
+            time_range=time_range,
+            metrics=metric_type,
+            aggregation=aggregation
+        )
+        st.session_state['historical_data'] = historical_data
+        
+        # Show brief success/info message
+        if historical_data is not None and not historical_data.empty:
+            st.success(f"✅ Query completed! Found {len(historical_data)} records.")
+        else:
+            st.info("Query completed - No data found for the selected criteria.")
     
     # Display cached data if available
     if 'historical_data' in st.session_state:
@@ -466,8 +467,8 @@ def display_historical_view(config):
                 st.metric("Average Price", f"${historical_data['value'].mean():.2f}")
         
         with col4:
-            if 'sensor_id' in historical_data.columns:
-                st.metric("Stocks Tracked", historical_data['sensor_id'].nunique())
+            if 'stock_symbol' in historical_data.columns:
+                st.metric("Stocks Tracked", historical_data['stock_symbol'].nunique())
         
         # Historical trend visualization
         st.subheader("📊 Historical Trends")
@@ -478,9 +479,9 @@ def display_historical_view(config):
                 historical_data,
                 x='timestamp',
                 y='value',
-                color='sensor_id' if 'sensor_id' in historical_data.columns else None,
+                color='stock_symbol' if 'stock_symbol' in historical_data.columns else None,
                 title=f"Historical Stock Prices - {time_range} ({aggregation} aggregation)",
-                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'sensor_id': 'Stock Symbol'},
+                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
                 template='plotly_white'
             )
             fig.update_layout(
@@ -488,25 +489,25 @@ def display_historical_view(config):
                 yaxis_title="Price (USD)",
                 hovermode='x unified',
                 height=500,
-                legend_title_text='Stock Symbol'
+                legend_title_text='Stock'
             )
             st.plotly_chart(fig, use_container_width=True)
             
             # Distribution chart
-            if 'sensor_id' in historical_data.columns and historical_data['sensor_id'].nunique() > 1:
+            if 'stock_symbol' in historical_data.columns and historical_data['stock_symbol'].nunique() > 1:
                 st.subheader("📉 Price Distribution by Stock")
                 fig_box = px.box(
                     historical_data,
-                    x='sensor_id',
+                    x='stock_symbol',
                     y='value',
                     title="Stock Price Distribution",
-                    labels={'value': 'Price (USD)', 'sensor_id': 'Stock Symbol'},
+                    labels={'value': 'Price (USD)', 'stock_symbol': 'Stock'},
                     template='plotly_white'
                 )
                 st.plotly_chart(fig_box, use_container_width=True)
             
             # Stock comparison
-            if 'sensor_id' in historical_data.columns and historical_data['sensor_id'].nunique() > 1:
+            if 'stock_symbol' in historical_data.columns and historical_data['stock_symbol'].nunique() > 1:
                 st.subheader("🔍 Stock Performance Comparison")
                 
                 # Calculate percentage change from first value for each stock
@@ -536,7 +537,7 @@ def display_historical_view(config):
         # Statistical summary
         with st.expander("📊 Statistical Summary"):
             if 'value' in historical_data.columns:
-                if 'sensor_id' in historical_data.columns:
+                if 'stock_symbol' in historical_data.columns:
                     summary_df = historical_data.groupby('sensor_id')['value'].describe()
                     summary_df.columns = ['Count', 'Mean Price', 'Std Dev', 'Min Price', '25%', '50% (Median)', '75%', 'Max Price']
                 else:
@@ -605,8 +606,8 @@ def main():
             help="Set how often real-time data refreshes"
         )
         
-        # Auto-refresh using streamlit-autorefresh package
-        st_autorefresh(interval=refresh_interval * 1000, key="auto_refresh")
+        # Auto-refresh using streamlit-autorefresh package (runs silently without darkening)
+        st_autorefresh(interval=refresh_interval * 1000, key="auto_refresh", limit=None, debounce=False)
     
     # Manual refresh button
     if st.sidebar.button("🔄 Manual Refresh"):
