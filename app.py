@@ -149,25 +149,42 @@ def consume_kafka_data(config):
                     for message in messages_batch:
                         try:
                             data = message.value
-                            if all(key in data for key in ['timestamp', 'value', 'metric_type', 'sensor_id']):
+                            # Check for required fields (support both sensor_id and stock_symbol)
+                            if 'timestamp' in data and 'value' in data and 'metric_type' in data:
                                 # Robust timestamp parsing for various ISO 8601 formats
                                 timestamp_str = data['timestamp']
                                 try:
-                                    # Handle common ISO 8601 formats including Zulu time
-                                    if timestamp_str.endswith('Z'):
-                                        timestamp_str = timestamp_str[:-1] + '+00:00'
-                                    # Parse the timestamp
-                                    timestamp = datetime.fromisoformat(timestamp_str)
+                                    # Parse simplified timestamp format (YYYY-MM-DDTHH:MM:SS)
+                                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S")
+                                    
                                     messages.append({
                                         'timestamp': timestamp,
                                         'value': float(data['value']),
                                         'metric_type': data['metric_type'],
-                                        'sensor_id': data['sensor_id']
+                                        'stock_symbol': data.get('stock_symbol', data.get('sensor_id', 'Unknown')),
+                                        'change': data.get('change', 0),
+                                        'change_percent': data.get('change_percent', '0.00'),
+                                        'volume': data.get('volume', 0),
+                                        'location': data.get('location', '')
                                     })
                                 except ValueError as ve:
-                                    st.warning(f"Invalid timestamp format '{timestamp_str}': {ve}")
+                                    # Fallback: try parsing as ISO format with timezone
+                                    try:
+                                        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                        messages.append({
+                                            'timestamp': timestamp,
+                                            'value': float(data['value']),
+                                            'metric_type': data['metric_type'],
+                                            'stock_symbol': data.get('stock_symbol', data.get('sensor_id', 'Unknown')),
+                                            'change': data.get('change', 0),
+                                            'change_percent': data.get('change_percent', '0.00'),
+                                            'volume': data.get('volume', 0),
+                                            'location': data.get('location', '')
+                                        })
+                                    except ValueError:
+                                        st.warning(f"Invalid timestamp format '{timestamp_str}': {ve}")
                             else:
-                                st.warning(f"Invalid message format: {data}")
+                                st.warning(f"Invalid message format - missing required fields: {data}")
                         except (ValueError, KeyError, TypeError) as e:
                             st.warning(f"Error processing message: {e}")
             
