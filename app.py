@@ -140,10 +140,10 @@ def consume_kafka_data(config):
             # Poll for messages
             messages = []
             start_time = time.time()
-            poll_timeout = 3  # Reduced from 5 seconds
+            poll_timeout = 2  # Quick poll to avoid blocking UI
             
-            while time.time() - start_time < poll_timeout and len(messages) < 10:
-                msg_pack = consumer.poll(timeout_ms=1000)
+            while time.time() - start_time < poll_timeout and len(messages) < 50:
+                msg_pack = consumer.poll(timeout_ms=500, max_records=50)
                 
                 for tp, messages_batch in msg_pack.items():
                     for message in messages_batch:
@@ -189,10 +189,17 @@ def consume_kafka_data(config):
                             st.warning(f"Error processing message: {e}")
             
             if messages:
-                return pd.DataFrame(messages)
+                df = pd.DataFrame(messages)
+                # Cache the latest data
+                st.session_state['last_kafka_data'] = df
+                return df
             else:
-                st.info("No messages received from Kafka. Using sample data.")
-                return generate_sample_data()
+                # Use cached data if available, otherwise show info
+                if 'last_kafka_data' in st.session_state:
+                    return st.session_state['last_kafka_data']
+                else:
+                    st.info("Waiting for Kafka messages... Make sure the producer is running.")
+                    return generate_sample_data()
                 
         except (NoBrokersAvailable, KafkaError, Exception) as e:
             error_type = "Kafka broker unavailable" if isinstance(e, NoBrokersAvailable) else f"Kafka error: {e}" if isinstance(e, KafkaError) else f"Unexpected error: {e}"
@@ -242,10 +249,14 @@ def query_historical_data(config, time_range="1h", metrics=None, aggregation="ra
         time_delta = time_map.get(time_range, timedelta(hours=1))
         # Use UTC+8 time to match MongoDB stored timestamps
         utc_plus_8 = timezone(timedelta(hours=8))
-        start_time = datetime.now(utc_plus_8) - time_delta
+        current_time = datetime.now(utc_plus_8)
+        start_time = current_time - time_delta
         
-        # Build query
+        # Build query - MongoDB query needs to handle timezone-aware datetime
         query = {"timestamp": {"$gte": start_time}}
+        
+        # Debug: show query time range
+        st.info(f"Querying data from {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Add metric filter if specified
         if metrics and metrics != ["all"] and "all" not in metrics:
@@ -255,11 +266,17 @@ def query_historical_data(config, time_range="1h", metrics=None, aggregation="ra
         cursor = collection.find(query).sort("timestamp", 1)
         data_list = list(cursor)
         
+        # Get total count for debugging
+        total_count = collection.count_documents({})
+        matching_count = len(data_list)
+        
         client.close()
         
         if not data_list:
-            st.warning(f"No historical data found for the selected time range ({time_range})")
+            st.warning(f"No historical data found for the selected time range ({time_range}). Total documents in DB: {total_count}")
             return pd.DataFrame()
+        else:
+            st.success(f"Found {matching_count} records (Total in DB: {total_count})")
         
         # Convert to DataFrame
         df = pd.DataFrame(data_list)
