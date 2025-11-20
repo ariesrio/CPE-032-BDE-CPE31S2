@@ -59,6 +59,10 @@ class StreamingDataProducer:
         # Stock symbols to track (limited to 3 for better visualization)
         self.stock_symbols = [
             {"symbol": "GOOGL", "name": "Alphabet Inc."},
+            {"symbol": "AAPL", "name": "Apple Inc."},
+            {"symbol": "MSFT", "name": "Microsoft Corporation"},
+            {"symbol": "AMZN", "name": "Amazon.com, Inc."},
+            {"symbol": "TSLA", "name": "Tesla, Inc."}
         ]
         
         # API call tracking (yfinance has no strict rate limits, but we use reasonable delays)
