@@ -111,8 +111,8 @@ def consume_kafka_data(config):
     cache_key = f"kafka_consumer_{kafka_broker}_{kafka_topic}"
     if cache_key not in st.session_state:
         # Connection retry logic for Kafka consumer
-        max_retries = 3
-        retry_delay = 2  # seconds
+        max_retries = 2  # Reduced from 3
+        retry_delay = 1  # Reduced from 2 seconds
         
         for attempt in range(max_retries):
             try:
@@ -122,7 +122,7 @@ def consume_kafka_data(config):
                     auto_offset_reset='latest',
                     enable_auto_commit=True,
                     value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-                    consumer_timeout_ms=5000
+                    consumer_timeout_ms=3000  # Reduced from 5000ms to 3000ms
                 )
                 break  # Success, break out of retry loop
             except Exception as e:
@@ -140,7 +140,7 @@ def consume_kafka_data(config):
             # Poll for messages
             messages = []
             start_time = time.time()
-            poll_timeout = 5
+            poll_timeout = 3  # Reduced from 5 seconds
             
             while time.time() - start_time < poll_timeout and len(messages) < 10:
                 msg_pack = consumer.poll(timeout_ms=1000)
@@ -208,7 +208,7 @@ def query_historical_data(config, time_range="1h", metrics=None, aggregation="ra
     
     try:
         # Connect to MongoDB
-        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)  # Reduced from 5000ms
         # Test connection
         client.admin.command('ping')
         db = client[mongo_db]
@@ -535,7 +535,7 @@ def main():
     if 'refresh_state' not in st.session_state:
         st.session_state.refresh_state = {
             'last_refresh': datetime.now(),
-            'auto_refresh': True
+            'auto_refresh': False  # Changed from True - disable by default for better performance
         }
     
     # Setup configuration
