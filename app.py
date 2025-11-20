@@ -62,8 +62,8 @@ def setup_sidebar():
     
     mongo_uri = st.sidebar.text_input(
         "MongoDB URI",
-        value="mongodb://localhost:27017/",
-        help="MongoDB connection string"
+        value="mongodb+srv://<username>:<password>@<cluster>.mongodb.net/",
+        help="MongoDB Atlas connection string (format: mongodb+srv://username:password@cluster.mongodb.net/)"
     )
     
     mongo_db = st.sidebar.text_input(

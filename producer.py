@@ -29,7 +29,7 @@ class StreamingDataProducer:
     This class handles Kafka connection, realistic data generation, and message sending
     """
     
-    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb://localhost:27017/", mongo_db: str = "streaming_data"):
+    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/", mongo_db: str = "streaming_data"):
         """
         Initialize Kafka producer configuration with stateful data generation
         
@@ -391,8 +391,8 @@ def parse_arguments():
     parser.add_argument(
         '--mongo-uri',
         type=str,
-        default='mongodb://localhost:27017/',
-        help='MongoDB connection URI (default: mongodb://localhost:27017/)'
+        default='mongodb+srv://<username>:<password>@<cluster>.mongodb.net/',
+        help='MongoDB Atlas connection URI (format: mongodb+srv://username:password@cluster.mongodb.net/)'
     )
     
     parser.add_argument(
