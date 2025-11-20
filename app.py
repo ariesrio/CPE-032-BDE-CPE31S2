@@ -149,7 +149,7 @@ def consume_kafka_data(config):
                     for message in messages_batch:
                         try:
                             data = message.value
-                            # Check for required fields (support both sensor_id and stock_symbol)
+                            # Check for required fields
                             if 'timestamp' in data and 'value' in data and 'metric_type' in data:
                                 # Robust timestamp parsing for various ISO 8601 formats
                                 timestamp_str = data['timestamp']
@@ -161,7 +161,7 @@ def consume_kafka_data(config):
                                         'timestamp': timestamp,
                                         'value': float(data['value']),
                                         'metric_type': data['metric_type'],
-                                        'stock_symbol': data.get('stock_symbol', data.get('sensor_id', 'Unknown')),
+                                        'stock_symbol': data.get('stock_symbol', 'Unknown'),
                                         'change': data.get('change', 0),
                                         'change_percent': data.get('change_percent', '0.00'),
                                         'volume': data.get('volume', 0),
@@ -175,7 +175,7 @@ def consume_kafka_data(config):
                                             'timestamp': timestamp,
                                             'value': float(data['value']),
                                             'metric_type': data['metric_type'],
-                                            'stock_symbol': data.get('stock_symbol', data.get('sensor_id', 'Unknown')),
+                                            'stock_symbol': data.get('stock_symbol', 'Unknown'),
                                             'change': data.get('change', 0),
                                             'change_percent': data.get('change_percent', '0.00'),
                                             'volume': data.get('volume', 0),
@@ -562,7 +562,7 @@ def display_historical_view(config):
                 # Calculate percentage change from first value for each stock
                 if aggregation == 'raw':
                     comparison_data = historical_data.copy()
-                    comparison_data['normalized'] = comparison_data.groupby('sensor_id')['value'].transform(
+                    comparison_data['normalized'] = comparison_data.groupby('stock_symbol')['value'].transform(
                         lambda x: ((x / x.iloc[0]) - 1) * 100 if len(x) > 0 and x.iloc[0] != 0 else 0
                     )
                     
@@ -570,9 +570,9 @@ def display_historical_view(config):
                         comparison_data,
                         x='timestamp',
                         y='normalized',
-                        color='sensor_id',
+                        color='stock_symbol',
                         title="Normalized Stock Performance (% Change from Start)",
-                        labels={'normalized': 'Change (%)', 'timestamp': 'Time', 'sensor_id': 'Stock Symbol'},
+                        labels={'normalized': 'Change (%)', 'timestamp': 'Time', 'stock_symbol': 'Stock Symbol'},
                         template='plotly_white'
                     )
                     fig_comp.update_layout(
@@ -587,7 +587,7 @@ def display_historical_view(config):
         with st.expander("📊 Statistical Summary"):
             if 'value' in historical_data.columns:
                 if 'stock_symbol' in historical_data.columns:
-                    summary_df = historical_data.groupby('sensor_id')['value'].describe()
+                    summary_df = historical_data.groupby('stock_symbol')['value'].describe()
                     summary_df.columns = ['Count', 'Mean Price', 'Std Dev', 'Min Price', '25%', '50% (Median)', '75%', 'Max Price']
                 else:
                     summary_df = historical_data['value'].describe()

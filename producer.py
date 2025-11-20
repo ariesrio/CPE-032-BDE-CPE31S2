@@ -192,7 +192,7 @@ class StreamingDataProducer:
             "timestamp": "2023-10-01T12:00:00Z",  # ISO format timestamp
             "value": 123.45,                      # Stock price
             "metric_type": "stock_price",         # Type of metric
-            "sensor_id": "AAPL",                  # Stock symbol
+            "stock_symbol": "AAPL",               # Stock symbol
             "location": "Apple Inc.",             # Company name
             "unit": "USD",                        # Currency unit
         }
