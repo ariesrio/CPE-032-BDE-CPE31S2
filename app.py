@@ -535,7 +535,7 @@ def main():
     if 'refresh_state' not in st.session_state:
         st.session_state.refresh_state = {
             'last_refresh': datetime.now(),
-            'auto_refresh': False  # Changed from True - disable by default for better performance
+            'auto_refresh': True
         }
     
     # Setup configuration
