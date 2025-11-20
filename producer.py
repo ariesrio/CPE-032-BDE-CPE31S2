@@ -435,8 +435,8 @@ def parse_arguments():
     parser.add_argument(
         '--rate',
         type=float,
-        default=0.1,
-        help='Messages per second (default: 0.1 for 10-second intervals)'
+        default=1.0,  # Changed from 0.1 to 1.0 for faster updates
+        help='Messages per second (default: 1.0 for 1-second intervals)'
     )
     
     parser.add_argument(
