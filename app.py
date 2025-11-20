@@ -411,81 +411,23 @@ def display_real_time_view(config, refresh_interval=15):
         st.subheader("📈 Live Stock Prices")
         
         if not real_time_data.empty:
-            # Add view selector
-            chart_view = st.radio(
-                "Chart View:",
-                ["Absolute Prices", "Normalized (% Change)", "Price Changes Only"],
-                horizontal=True,
-                help="Choose how to visualize the data for better pattern visibility"
+            # Stock price chart with color-coded lines by stock symbol
+            fig = px.line(
+                real_time_data,
+                x='timestamp',
+                y='value',
+                color='stock_symbol' if 'stock_symbol' in real_time_data.columns else None,
+                title=f"Real-time Stock Prices (Last {len(real_time_data)} updates)",
+                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
+                template='plotly_white'
             )
-            
-            if chart_view == "Normalized (% Change)":
-                # Normalize prices to show percentage change from first value
-                normalized_data = real_time_data.copy()
-                normalized_data['normalized_value'] = normalized_data.groupby('stock_symbol')['value'].transform(
-                    lambda x: ((x / x.iloc[0]) - 1) * 100 if len(x) > 0 and x.iloc[0] != 0 else 0
-                )
-                
-                fig = px.line(
-                    normalized_data,
-                    x='timestamp',
-                    y='normalized_value',
-                    color='stock_symbol',
-                    title=f"Real-time Stock Price Changes (Normalized % from start) - Zigzag Pattern Visible",
-                    labels={'normalized_value': 'Change from Start (%)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
-                    template='plotly_white',
-                    markers=True
-                )
-                fig.update_layout(
-                    xaxis_title="Time",
-                    yaxis_title="Change from Start (%)",
-                    hovermode='x unified',
-                    legend_title_text='Stock'
-                )
-            elif chart_view == "Price Changes Only":
-                # Show only the change values to highlight the zigzag
-                change_data = real_time_data.copy()
-                if 'change' in change_data.columns:
-                    fig = px.line(
-                        change_data,
-                        x='timestamp',
-                        y='change',
-                        color='stock_symbol',
-                        title=f"Real-time Price Changes ($ change from previous close) - Zigzag Pattern",
-                        labels={'change': 'Price Change ($)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
-                        template='plotly_white',
-                        markers=True
-                    )
-                    fig.update_layout(
-                        xaxis_title="Time",
-                        yaxis_title="Price Change ($)",
-                        hovermode='x unified',
-                        legend_title_text='Stock'
-                    )
-                else:
-                    st.warning("Change data not available")
-                    fig = None
-            else:
-                # Absolute prices (original view)
-                fig = px.line(
-                    real_time_data,
-                    x='timestamp',
-                    y='value',
-                    color='stock_symbol',
-                    title=f"Real-time Stock Prices (Last {len(real_time_data)} updates)",
-                    labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
-                    template='plotly_white',
-                    markers=True
-                )
-                fig.update_layout(
-                    xaxis_title="Time",
-                    yaxis_title="Price (USD)",
-                    hovermode='x unified',
-                    legend_title_text='Stock'
-                )
-            
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(
+                xaxis_title="Time",
+                yaxis_title="Price (USD)",
+                hovermode='x unified',
+                legend_title_text='Stock'
+            )
+            st.plotly_chart(fig, use_container_width=True)
             
             # Raw data table with auto-refresh
             with st.expander("📋 View Raw Data"):
@@ -682,9 +624,7 @@ def main():
         - **Interactive Charts**: Dynamic visualizations with filters
         
         **Data Source:** Yahoo Finance API (yfinance)  
-        **Stocks Tracked:** AAPL, MSFT, GOOGL (3 stocks for clear zigzag pattern)
-        
-        💡 **Tip:** Use "Normalized (% Change)" view in Live Stock Prices to see the zigzag pattern clearly!
+        **Stocks Tracked:** AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, JPM
         """)
     
     # Initialize session state for refresh management
