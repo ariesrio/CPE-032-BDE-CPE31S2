@@ -145,6 +145,9 @@ class StreamingDataProducer:
             utc_plus_8 = timezone(timedelta(hours=8))
             self.last_api_call = datetime.now(utc_plus_8)
             
+            # Debug: Print API response keys
+            print(f"DEBUG - API Response keys: {list(data.keys())}")
+            
             # Check for API errors
             if "Error Message" in data:
                 print(f"API Error: {data['Error Message']}")
@@ -181,6 +184,7 @@ class StreamingDataProducer:
                 return stock_data
             else:
                 print(f"No quote data available for {symbol}")
+                print(f"DEBUG - Full API response: {data}")
                 return None
                 
         except requests.exceptions.RequestException as e:
