@@ -14,7 +14,7 @@ import json
 import time
 import random
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 from pymongo import MongoClient # added for MongoDB usage
 
@@ -115,7 +115,8 @@ class StreamingDataProducer:
         Dictionary with stock data or None if fetch fails
         """
         # Check cache first
-        current_time = datetime.utcnow()
+        utc_plus_8 = timezone(timedelta(hours=8))
+        current_time = datetime.now(utc_plus_8)
         cache_key = symbol
         
         if cache_key in self.stock_cache:
@@ -141,7 +142,8 @@ class StreamingDataProducer:
             response.raise_for_status()
             
             data = response.json()
-            self.last_api_call = datetime.utcnow()
+            utc_plus_8 = timezone(timedelta(hours=8))
+            self.last_api_call = datetime.now(utc_plus_8)
             
             # Check for API errors
             if "Error Message" in data:
@@ -210,8 +212,9 @@ class StreamingDataProducer:
         
         if stock_data and stock_data["price"] > 0:
             # Use real API data
+            utc_plus_8 = timezone(timedelta(hours=8))
             sample_data = {
-                "timestamp": datetime.utcnow().isoformat() + 'Z',
+                "timestamp": datetime.now(utc_plus_8).isoformat(),
                 "value": round(stock_data["price"], 2),
                 "metric_type": "stock_price",
                 "stock_symbol": symbol,
@@ -235,8 +238,9 @@ class StreamingDataProducer:
             change_percent = random.uniform(-2, 2)  # -2% to +2% change
             new_price = base_price * (1 + change_percent / 100)
             
+            utc_plus_8 = timezone(timedelta(hours=8))
             sample_data = {
-                "timestamp": datetime.utcnow().isoformat() + 'Z',
+                "timestamp": datetime.now(utc_plus_8).isoformat(),
                 "value": round(new_price, 2),
                 "metric_type": "stock_price",
                 "stock_symbol": symbol,
@@ -248,7 +252,8 @@ class StreamingDataProducer:
             }
             
             # Update cache with simulated data
-            self.stock_cache[symbol] = ({"price": new_price}, datetime.utcnow())
+            utc_plus_8 = timezone(timedelta(hours=8))
+            self.stock_cache[symbol] = ({"price": new_price}, datetime.now(utc_plus_8))
         
         return sample_data
 
@@ -376,10 +381,8 @@ class StreamingDataProducer:
             # Convert timestamp string to datetime for better querying
             data_copy = data.copy()
             if 'timestamp' in data_copy:
-                # Parse ISO format timestamp
+                # Parse ISO format timestamp (already in UTC+8)
                 timestamp_str = data_copy['timestamp']
-                if timestamp_str.endswith('Z'):
-                    timestamp_str = timestamp_str[:-1] + '+00:00'
                 data_copy['timestamp'] = datetime.fromisoformat(timestamp_str)
             
             # Insert document into MongoDB

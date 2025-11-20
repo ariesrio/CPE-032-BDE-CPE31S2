@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.express as px
 import time
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError, NoBrokersAvailable
 from streamlit_autorefresh import st_autorefresh
@@ -223,8 +223,9 @@ def query_historical_data(config, time_range="1h", metrics=None, aggregation="ra
         }
         
         time_delta = time_map.get(time_range, timedelta(hours=1))
-        # Use UTC time to match MongoDB stored timestamps
-        start_time = datetime.utcnow() - time_delta
+        # Use UTC+8 time to match MongoDB stored timestamps
+        utc_plus_8 = timezone(timedelta(hours=8))
+        start_time = datetime.now(utc_plus_8) - time_delta
         
         # Build query
         query = {"timestamp": {"$gte": start_time}}
