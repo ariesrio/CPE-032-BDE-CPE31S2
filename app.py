@@ -570,12 +570,12 @@ def main():
         **BIG DATA STREAMING DASHBOARD**
         
         ### Features:
-        - **Real-time Stock Data**: Live stock prices via Alpha Vantage API
+        - **Real-time Stock Data**: Live stock prices via Yahoo Finance API (No Rate Limits!)
         - **Kafka Streaming**: Real-time message processing
         - **MongoDB Storage**: Historical data persistence
         - **Interactive Charts**: Dynamic visualizations with filters
         
-        **Data Source:** Alpha Vantage API  
+        **Data Source:** Yahoo Finance API (yfinance)  
         **Stocks Tracked:** AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, JPM
         """)
     

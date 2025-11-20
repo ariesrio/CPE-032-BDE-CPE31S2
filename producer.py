@@ -8,7 +8,6 @@ streaming data to Kafka for consumption by the dashboard.
 DO NOT MODIFY THE TEMPLATE STRUCTURE - IMPLEMENT THE TODO SECTIONS
 """
 
-import requests
 import argparse
 import json
 import time
@@ -17,6 +16,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 from pymongo import MongoClient # added for MongoDB usage
+import yfinance as yf  # Yahoo Finance API - no rate limits!
 
 # Kafka libraries
 from kafka import KafkaProducer
@@ -29,22 +29,20 @@ class StreamingDataProducer:
     This class handles Kafka connection, realistic data generation, and message sending
     """
     
-    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/", mongo_db: str = "streaming_data", api_key: str = None):
+    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/", mongo_db: str = "streaming_data"):
         """
-        Initialize Kafka producer configuration with stock market API integration
+        Initialize Kafka producer configuration with Yahoo Finance integration
         
         Parameters:
         - bootstrap_servers: Kafka broker addresses (e.g., "localhost:9092")
         - topic: Kafka topic to produce messages to
         - mongo_uri: MongoDB connection URI
         - mongo_db: MongoDB database name
-        - api_key: Alpha Vantage API key for stock market data
         """
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.mongo_uri = mongo_uri
         self.mongo_db = mongo_db
-        self.api_key = api_key or "demo"  # Use demo key if none provided
         
         # Kafka producer configuration
         self.producer_config = {
@@ -70,14 +68,14 @@ class StreamingDataProducer:
             {"symbol": "JPM", "name": "JPMorgan Chase & Co."},
         ]
         
-        # API call tracking to avoid rate limits (Alpha Vantage free tier: 5 calls/min, 500 calls/day)
+        # API call tracking (yfinance has no strict rate limits, but we use reasonable delays)
         self.last_api_call = None
-        self.api_call_delay = 12  # seconds between API calls (5 per minute = 12 seconds)
+        self.api_call_delay = 1  # 1 second delay to be respectful to the service
         self.current_symbol_index = 0
         
         # Cache for stock data
         self.stock_cache = {}
-        self.cache_duration = 60  # Cache data for 60 seconds
+        self.cache_duration = 30  # Cache data for 30 seconds
         
         # Initialize Kafka producer
         try:
@@ -106,7 +104,7 @@ class StreamingDataProducer:
 
     def fetch_stock_data(self, symbol: str) -> Dict[str, Any]:
         """
-        Fetch real-time stock data from Alpha Vantage API
+        Fetch real-time stock data from Yahoo Finance (no rate limits!)
         
         Parameters:
         - symbol: Stock ticker symbol (e.g., "AAPL", "MSFT")
@@ -125,80 +123,68 @@ class StreamingDataProducer:
                 print(f"Using cached data for {symbol}")
                 return cached_data
         
-        # Respect API rate limits
+        # Respectful delay (yfinance has no strict limits, but good practice)
         if self.last_api_call:
             elapsed = (current_time - self.last_api_call).total_seconds()
             if elapsed < self.api_call_delay:
                 wait_time = self.api_call_delay - elapsed
-                print(f"Rate limit: waiting {wait_time:.1f} seconds...")
                 time.sleep(wait_time)
         
         try:
-            # Alpha Vantage API endpoint - using TIME_SERIES_DAILY for 24/7 availability
-            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={self.api_key}"
+            print(f"Fetching stock data for {symbol} from Yahoo Finance...")
             
-            print(f"Fetching stock data for {symbol} from Alpha Vantage API...")
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
+            # Create ticker object
+            ticker = yf.Ticker(symbol)
             
-            data = response.json()
+            # Get current price and info
+            info = ticker.info
+            
+            # Get historical data for today to calculate change
+            hist = ticker.history(period="1d", interval="1m")
+            
             utc_plus_8 = timezone(timedelta(hours=8))
             self.last_api_call = datetime.now(utc_plus_8)
             
-            # Debug: Print API response keys
-            print(f"DEBUG - API Response keys: {list(data.keys())}")
+            # Extract current price (use regularMarketPrice or currentPrice)
+            current_price = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('previousClose', 0)
             
-            # Check for API errors
-            if "Error Message" in data:
-                print(f"API Error: {data['Error Message']}")
-                return None
+            if current_price == 0 and not hist.empty:
+                # Fallback to latest close price from history
+                current_price = hist['Close'].iloc[-1]
             
-            if "Note" in data:
-                print(f"API Rate Limit: {data['Note']}")
-                return None
+            # Calculate change
+            previous_close = info.get('previousClose', current_price)
+            change = current_price - previous_close
+            change_percent = (change / previous_close * 100) if previous_close > 0 else 0
             
-            # Extract daily time series data
-            if "Time Series (Daily)" in data and data["Time Series (Daily)"]:
-                time_series = data["Time Series (Daily)"]
-                # Get the most recent trading day
-                latest_date = sorted(time_series.keys(), reverse=True)[0]
-                latest_data = time_series[latest_date]
+            # Get volume
+            volume = info.get('volume') or info.get('regularMarketVolume', 0)
+            if volume == 0 and not hist.empty:
+                volume = hist['Volume'].iloc[-1]
+            
+            stock_data = {
+                "symbol": symbol,
+                "price": round(float(current_price), 2),
+                "volume": int(volume),
+                "change": round(float(change), 2),
+                "change_percent": f"{change_percent:.2f}",
+                "market_state": info.get('marketState', 'REGULAR'),
+            }
+            
+            # Cache the result
+            self.stock_cache[cache_key] = (stock_data, current_time)
+            
+            return stock_data
                 
-                close_price = float(latest_data.get("4. close", 0))
-                open_price = float(latest_data.get("1. open", 0))
-                change = close_price - open_price
-                change_percent = (change / open_price * 100) if open_price > 0 else 0
-                
-                stock_data = {
-                    "symbol": symbol,
-                    "price": close_price,
-                    "volume": float(latest_data.get("5. volume", 0)),
-                    "change": change,
-                    "change_percent": f"{change_percent:.2f}",
-                    "latest_trading_day": latest_date,
-                }
-                
-                # Cache the result
-                self.stock_cache[cache_key] = (stock_data, current_time)
-                
-                return stock_data
-            else:
-                print(f"No quote data available for {symbol}")
-                print(f"DEBUG - Full API response: {data}")
-                return None
-                
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"Error fetching stock data for {symbol}: {e}")
-            return None
-        except (KeyError, ValueError) as e:
-            print(f"Error parsing stock data for {symbol}: {e}")
             return None
 
     def generate_sample_data(self) -> Dict[str, Any]:
         """
         Generate streaming data from real stock market API
         
-        Fetches real-time stock prices from Alpha Vantage API and formats them
+        Fetches real-time stock prices from Yahoo Finance API (no rate limits!) and formats them
         for the streaming dashboard.
         
         Expected data format (must include these fields for dashboard compatibility):
@@ -473,13 +459,6 @@ def parse_arguments():
         help='MongoDB database name (default: streaming_data)'
     )
     
-    parser.add_argument(
-        '--api-key',
-        type=str,
-        default='demo',
-        help='Alpha Vantage API key (default: demo). Get free key at https://www.alphavantage.co/support/#api-key'
-    )
-    
     return parser.parse_args()
 
 
@@ -496,19 +475,18 @@ def main():
     
     print("=" * 60)
     print("STREAMING DATA PRODUCER - STOCK MARKET DATA")
-    print("Data Source: Alpha Vantage API")
+    print("Data Source: Yahoo Finance API (No Rate Limits!)")
     print("=" * 60)
     
     # Parse command-line arguments
     args = parse_arguments()
     
-    # Initialize producer with MongoDB and API configuration
+    # Initialize producer with MongoDB configuration
     producer = StreamingDataProducer(
         bootstrap_servers=args.bootstrap_servers,
         topic=args.topic,
         mongo_uri=args.mongo_uri,
-        mongo_db=args.mongo_db,
-        api_key=args.api_key
+        mongo_db=args.mongo_db
     )
     
     # Start producing stream

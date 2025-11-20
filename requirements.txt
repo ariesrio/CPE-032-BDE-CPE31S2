@@ -6,6 +6,7 @@ numpy>=1.24.0      # Numerical computing and array operations
 plotly>=5.15.0     # Interactive plotting library for charts and graphs
 kafka-python>=2.0.2  # Apache Kafka Python client for both producer and consumer
 python-dateutil>=2.8.2  # Extended date/time utilities (used by pandas)
+yfinance>=0.2.28   # Yahoo Finance API - real-time stock data with NO rate limits!
 
 # Optional: Storage Systems (uncomment based on your chosen storage)
 # pyarrow>=12.0.0      # Apache Arrow for HDFS integration
