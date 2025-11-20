@@ -189,14 +189,28 @@ def consume_kafka_data(config):
                             st.warning(f"Error processing message: {e}")
             
             if messages:
-                df = pd.DataFrame(messages)
-                # Cache the latest data
-                st.session_state['last_kafka_data'] = df
-                return df
+                new_df = pd.DataFrame(messages)
+                
+                # Accumulate data - append to existing data instead of replacing
+                if 'accumulated_kafka_data' in st.session_state:
+                    # Combine old and new data
+                    combined_df = pd.concat([st.session_state['accumulated_kafka_data'], new_df], ignore_index=True)
+                    # Keep only the last 100 records to prevent memory issues
+                    combined_df = combined_df.tail(100)
+                    # Remove duplicates based on timestamp and stock_symbol
+                    combined_df = combined_df.drop_duplicates(subset=['timestamp', 'stock_symbol'], keep='last')
+                    # Sort by timestamp
+                    combined_df = combined_df.sort_values('timestamp', ascending=True).reset_index(drop=True)
+                    st.session_state['accumulated_kafka_data'] = combined_df
+                    return combined_df
+                else:
+                    # First time - initialize accumulated data
+                    st.session_state['accumulated_kafka_data'] = new_df
+                    return new_df
             else:
-                # Use cached data if available, otherwise show info
-                if 'last_kafka_data' in st.session_state:
-                    return st.session_state['last_kafka_data']
+                # Use accumulated data if available
+                if 'accumulated_kafka_data' in st.session_state:
+                    return st.session_state['accumulated_kafka_data']
                 else:
                     st.info("Waiting for Kafka messages... Make sure the producer is running.")
                     return generate_sample_data()
