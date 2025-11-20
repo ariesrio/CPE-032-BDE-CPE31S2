@@ -411,84 +411,23 @@ def display_real_time_view(config, refresh_interval=15):
         st.subheader("📈 Live Stock Prices")
         
         if not real_time_data.empty:
-            # Create two columns for different chart views
-            chart_col1, chart_col2 = st.columns(2)
-            
-            with chart_col1:
-                # Individual stock lines (original view)
-                fig = px.line(
-                    real_time_data,
-                    x='timestamp',
-                    y='value',
-                    color='stock_symbol' if 'stock_symbol' in real_time_data.columns else None,
-                    title=f"Stock Prices by Symbol (Last {len(real_time_data)} updates)",
-                    labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
-                    template='plotly_white'
-                )
-                fig.update_layout(
-                    xaxis_title="Time",
-                    yaxis_title="Price (USD)",
-                    hovermode='x unified',
-                    legend_title_text='Stock',
-                    height=400
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with chart_col2:
-                # Rolling average with zigzag pattern
-                if 'stock_symbol' in real_time_data.columns:
-                    # Calculate rolling average for each stock
-                    avg_data = real_time_data.sort_values('timestamp').copy()
-                    avg_data['rolling_avg'] = avg_data.groupby('stock_symbol')['value'].transform(
-                        lambda x: x.rolling(window=min(3, len(x)), min_periods=1).mean()
-                    )
-                    
-                    fig_avg = px.line(
-                        avg_data,
-                        x='timestamp',
-                        y='rolling_avg',
-                        color='stock_symbol',
-                        title="Rolling Average Price (3-point window)",
-                        labels={'rolling_avg': 'Avg Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
-                        template='plotly_white'
-                    )
-                    fig_avg.update_layout(
-                        xaxis_title="Time",
-                        yaxis_title="Avg Price (USD)",
-                        hovermode='x unified',
-                        legend_title_text='Stock',
-                        height=400
-                    )
-                    st.plotly_chart(fig_avg, use_container_width=True)
-            
-            # Add a combined market trend view
-            if 'stock_symbol' in real_time_data.columns and real_time_data['stock_symbol'].nunique() > 1:
-                st.subheader("📊 Market-Wide Average Trend")
-                
-                # Calculate market-wide average at each timestamp
-                market_avg = real_time_data.groupby('timestamp').agg({
-                    'value': 'mean',
-                    'stock_symbol': 'count'
-                }).reset_index()
-                market_avg.columns = ['timestamp', 'avg_price', 'num_stocks']
-                
-                fig_market = px.line(
-                    market_avg,
-                    x='timestamp',
-                    y='avg_price',
-                    title="Market-Wide Average Price Trend",
-                    labels={'avg_price': 'Average Price (USD)', 'timestamp': 'Time'},
-                    template='plotly_white',
-                    markers=True
-                )
-                fig_market.update_traces(line_color='#FF6B6B', line_width=3)
-                fig_market.update_layout(
-                    xaxis_title="Time",
-                    yaxis_title="Market Avg Price (USD)",
-                    hovermode='x unified',
-                    height=350
-                )
-                st.plotly_chart(fig_market, use_container_width=True)
+            # Stock price chart with color-coded lines by stock symbol
+            fig = px.line(
+                real_time_data,
+                x='timestamp',
+                y='value',
+                color='stock_symbol' if 'stock_symbol' in real_time_data.columns else None,
+                title=f"Real-time Stock Prices (Last {len(real_time_data)} updates)",
+                labels={'value': 'Stock Price (USD)', 'timestamp': 'Time', 'stock_symbol': 'Stock'},
+                template='plotly_white'
+            )
+            fig.update_layout(
+                xaxis_title="Time",
+                yaxis_title="Price (USD)",
+                hovermode='x unified',
+                legend_title_text='Stock'
+            )
+            st.plotly_chart(fig, use_container_width=True)
             
             # Raw data table with auto-refresh
             with st.expander("📋 View Raw Data"):
