@@ -313,7 +313,7 @@ class StreamingDataProducer:
         Returns:
         - bool: True if data was stored successfully, False otherwise
         """
-        if not self.collection:
+        if self.collection is None:
             return False
         
         try:
