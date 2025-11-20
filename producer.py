@@ -212,7 +212,7 @@ class StreamingDataProducer:
             # Use real API data
             utc_plus_8 = timezone(timedelta(hours=8))
             sample_data = {
-                "timestamp": datetime.now(utc_plus_8).isoformat(),
+                "timestamp": datetime.now(utc_plus_8).strftime("%Y-%m-%dT%H:%M:%S"),  # Simplified format without microseconds
                 "value": round(stock_data["price"], 2),
                 "metric_type": "stock_price",
                 "stock_symbol": symbol,
@@ -238,7 +238,7 @@ class StreamingDataProducer:
             
             utc_plus_8 = timezone(timedelta(hours=8))
             sample_data = {
-                "timestamp": datetime.now(utc_plus_8).isoformat(),
+                "timestamp": datetime.now(utc_plus_8).strftime("%Y-%m-%dT%H:%M:%S"),  # Simplified format
                 "value": round(new_price, 2),
                 "metric_type": "stock_price",
                 "stock_symbol": symbol,
@@ -379,9 +379,10 @@ class StreamingDataProducer:
             # Convert timestamp string to datetime for better querying
             data_copy = data.copy()
             if 'timestamp' in data_copy:
-                # Parse ISO format timestamp (already in UTC+8)
+                # Parse simplified timestamp format (YYYY-MM-DDTHH:MM:SS)
                 timestamp_str = data_copy['timestamp']
-                data_copy['timestamp'] = datetime.fromisoformat(timestamp_str)
+                # Add timezone info for UTC+8
+                data_copy['timestamp'] = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone(timedelta(hours=8)))
             
             # Insert document into MongoDB
             result = self.collection.insert_one(data_copy)
