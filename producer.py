@@ -134,8 +134,8 @@ class StreamingDataProducer:
                 time.sleep(wait_time)
         
         try:
-            # Alpha Vantage API endpoint for real-time quote
-            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={self.api_key}"
+            # Alpha Vantage API endpoint - using TIME_SERIES_DAILY for 24/7 availability
+            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={self.api_key}"
             
             print(f"Fetching stock data for {symbol} from Alpha Vantage API...")
             response = requests.get(url, timeout=10)
@@ -154,17 +154,25 @@ class StreamingDataProducer:
                 print(f"API Rate Limit: {data['Note']}")
                 return None
             
-            # Extract quote data
-            if "Global Quote" in data and data["Global Quote"]:
-                quote = data["Global Quote"]
+            # Extract daily time series data
+            if "Time Series (Daily)" in data and data["Time Series (Daily)"]:
+                time_series = data["Time Series (Daily)"]
+                # Get the most recent trading day
+                latest_date = sorted(time_series.keys(), reverse=True)[0]
+                latest_data = time_series[latest_date]
+                
+                close_price = float(latest_data.get("4. close", 0))
+                open_price = float(latest_data.get("1. open", 0))
+                change = close_price - open_price
+                change_percent = (change / open_price * 100) if open_price > 0 else 0
                 
                 stock_data = {
                     "symbol": symbol,
-                    "price": float(quote.get("05. price", 0)),
-                    "volume": float(quote.get("06. volume", 0)),
-                    "change": float(quote.get("09. change", 0)),
-                    "change_percent": quote.get("10. change percent", "0%").replace("%", ""),
-                    "latest_trading_day": quote.get("07. latest trading day", ""),
+                    "price": close_price,
+                    "volume": float(latest_data.get("5. volume", 0)),
+                    "change": change,
+                    "change_percent": f"{change_percent:.2f}",
+                    "latest_trading_day": latest_date,
                 }
                 
                 # Cache the result
