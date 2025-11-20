@@ -56,9 +56,9 @@ class StreamingDataProducer:
             # 'linger_ms': 10,  # Optional: Wait for batch fill
         }
         
-        # Stock symbols to track (single stock for clear trend visualization)
+        # Stock symbols to track (limited to 3 for better visualization)
         self.stock_symbols = [
-            {"symbol": "MSFT", "name": "Microsoft Corporation"},
+            {"symbol": "GOOGL", "name": "Alphabet Inc."},
         ]
         
         # API call tracking (yfinance has no strict rate limits, but we use reasonable delays)
