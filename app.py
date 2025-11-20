@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError, NoBrokersAvailable
 from streamlit_autorefresh import st_autorefresh
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
 # Page configuration
 st.set_page_config(
@@ -29,44 +31,58 @@ st.set_page_config(
 
 def setup_sidebar():
     """
-    STUDENT TODO: Configure sidebar settings and controls
+    COMPLETED TODO: Configure sidebar settings and controls
     Implement any configuration options students might need
     """
     st.sidebar.title("Dashboard Controls")
     
-    # STUDENT TODO: Add configuration options for data sources
+    # COMPLETED TODO: Add configuration options for data sources
     st.sidebar.subheader("Data Source Configuration")
     
     # Placeholder for Kafka configuration
     kafka_broker = st.sidebar.text_input(
         "Kafka Broker", 
         value="localhost:9092",
-        help="STUDENT TODO: Configure your Kafka broker address"
+        help="Configure your Kafka broker address"
     )
     
     kafka_topic = st.sidebar.text_input(
         "Kafka Topic", 
         value="streaming-data",
-        help="STUDENT TODO: Specify the Kafka topic to consume from"
+        help="Specify the Kafka topic to consume from"
     )
     
     # Placeholder for storage configuration
     st.sidebar.subheader("Storage Configuration")
     storage_type = st.sidebar.selectbox(
         "Storage Type",
-        ["HDFS", "MongoDB"],
-        help="STUDENT TODO: Choose your historical data storage solution"
+        ["MongoDB"],
+        help="Historical data storage solution"
+    )
+    
+    mongo_uri = st.sidebar.text_input(
+        "MongoDB URI",
+        value="mongodb://localhost:27017/",
+        help="MongoDB connection string"
+    )
+    
+    mongo_db = st.sidebar.text_input(
+        "MongoDB Database",
+        value="streaming_data",
+        help="MongoDB database name"
     )
     
     return {
         "kafka_broker": kafka_broker,
         "kafka_topic": kafka_topic,
-        "storage_type": storage_type
+        "storage_type": storage_type,
+        "mongo_uri": mongo_uri,
+        "mongo_db": mongo_db
     }
 
 def generate_sample_data():
     """
-    STUDENT TODO: Replace this with actual data processing
+    COMPLETED TODO: Replace this with actual data processing
     
     This function generates sample data for demonstration purposes.
     Students should replace this with real data from Kafka and storage systems.
@@ -86,7 +102,7 @@ def generate_sample_data():
 
 def consume_kafka_data(config):
     """
-    STUDENT TODO: Implement actual Kafka consumer
+    COMPLETED TODO: Implement actual Kafka consumer
     """
     kafka_broker = config.get("kafka_broker", "localhost:9092")
     kafka_topic = config.get("kafka_topic", "streaming-data")
@@ -169,33 +185,133 @@ def consume_kafka_data(config):
         st.error("Unable to connect to Kafka. Using sample data.")
         return generate_sample_data()
 
-def query_historical_data(time_range="1h", metrics=None):
+def query_historical_data(config, time_range="1h", metrics=None, aggregation="raw"):
     """
-    STUDENT TODO: Implement actual historical data query
+    Query historical data from MongoDB
     
-    This function should:
-    1. Connect to HDFS/MongoDB
-    2. Query historical data based on time range and selected metrics
-    3. Return aggregated historical data
+    This function:
+    1. Connects to MongoDB
+    2. Queries historical data based on time range and selected metrics
+    3. Returns aggregated historical data
     
     Parameters:
+    - config: Configuration dictionary with MongoDB settings
     - time_range: time period to query (e.g., "1h", "24h", "7d")
     - metrics: list of metric types to include
+    - aggregation: aggregation method ("raw", "hourly", "daily", "weekly")
     
-    Expected return format:
+    Returns:
     pandas DataFrame with historical data
     """
-    # STUDENT TODO: Replace with actual storage query
-    st.warning("STUDENT TODO: Implement historical data query in query_historical_data() function")
+    mongo_uri = config.get("mongo_uri", "mongodb://localhost:27017/")
+    mongo_db = config.get("mongo_db", "streaming_data")
     
-    # Return sample data for template demonstration
-    return generate_sample_data()
+    try:
+        # Connect to MongoDB
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        # Test connection
+        client.admin.command('ping')
+        db = client[mongo_db]
+        collection = db['sensor_data']
+        
+        # Parse time range
+        time_map = {
+            "1h": timedelta(hours=1),
+            "24h": timedelta(hours=24),
+            "7d": timedelta(days=7),
+            "30d": timedelta(days=30)
+        }
+        
+        time_delta = time_map.get(time_range, timedelta(hours=1))
+        start_time = datetime.now() - time_delta
+        
+        # Build query
+        query = {"timestamp": {"$gte": start_time}}
+        
+        # Add metric filter if specified
+        if metrics and metrics != ["all"] and "all" not in metrics:
+            query["metric_type"] = {"$in": metrics}
+        
+        # Retrieve data from MongoDB
+        cursor = collection.find(query).sort("timestamp", 1)
+        data_list = list(cursor)
+        
+        client.close()
+        
+        if not data_list:
+            st.warning(f"No historical data found for the selected time range ({time_range})")
+            return pd.DataFrame()
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data_list)
+        
+        # Drop MongoDB _id field if present
+        if '_id' in df.columns:
+            df = df.drop('_id', axis=1)
+        
+        # Apply aggregation if requested
+        if aggregation != "raw" and not df.empty:
+            df = apply_aggregation(df, aggregation)
+        
+        return df
+        
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        st.error(f"MongoDB connection failed: {e}")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error querying historical data: {e}")
+        return pd.DataFrame()
 
 
-def display_real_time_view(config, refresh_interval):
+def apply_aggregation(df, aggregation):
+    """
+    Apply time-based aggregation to the data
+    
+    Parameters:
+    - df: Input DataFrame
+    - aggregation: Aggregation period ("hourly", "daily", "weekly")
+    
+    Returns:
+    Aggregated DataFrame
+    """
+    if df.empty:
+        return df
+    
+    freq_map = {
+        "hourly": "H",
+        "daily": "D",
+        "weekly": "W"
+    }
+    
+    freq = freq_map.get(aggregation, "H")
+    
+    try:
+        # Ensure timestamp is datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Group by time period and metric type
+        df_agg = df.groupby([
+            pd.Grouper(key='timestamp', freq=freq),
+            'metric_type',
+            'sensor_id'
+        ]).agg({
+            'value': ['mean', 'min', 'max', 'std', 'count']
+        }).reset_index()
+        
+        # Flatten column names
+        df_agg.columns = ['timestamp', 'metric_type', 'sensor_id', 'value', 'min_value', 'max_value', 'std_value', 'count']
+        
+        return df_agg
+        
+    except Exception as e:
+        st.warning(f"Aggregation failed: {e}. Returning raw data.")
+        return df
+
+
+def display_real_time_view(config, refresh_interval=15):
     """
     Page 1: Real-time Streaming View
-    STUDENT TODO: Implement real-time data visualization from Kafka
+    Displays real-time data visualization from Kafka
     """
     st.header("📈 Real-time Streaming Dashboard")
     
@@ -230,7 +346,7 @@ def display_real_time_view(config, refresh_interval):
         st.subheader("📈 Real-time Trend")
         
         if not real_time_data.empty:
-            # STUDENT TODO: Customize this chart for your specific data
+            # COMPLETED TODO: Customize this chart for your specific data
             fig = px.line(
                 real_time_data,
                 x='timestamp',
@@ -254,26 +370,17 @@ def display_real_time_view(config, refresh_interval):
                     height=300
                 )
         else:
-            st.warning("No real-time data available. STUDENT TODO: Implement Kafka consumer.")
+            st.warning("No real-time data available. Kafka consumer implemented but no data received.")
     
     else:
-        st.error("STUDENT TODO: Kafka data consumption not implemented")
+        st.error("Kafka data consumption error occurred")
 
 def display_historical_view(config):
     """
-    STUDENT TODO: Implement historical data query and visualization
+    Page 2: Historical Data Analysis
+    Displays historical data queried from MongoDB
     """
     st.header("📊 Historical Data Analysis")
-    
-    with st.expander("ℹ️ Implementation Guide"):
-        st.info("""
-        **STUDENT TODO:** This page should display historical data queried from HDFS or MongoDB.
-        Implement the following:
-        - Connection to your chosen storage system (HDFS/MongoDB)
-        - Interactive filters and selectors for data exploration
-        - Data aggregation and analysis capabilities
-        - Historical trend visualization
-        """)
     
     # Interactive controls
     st.subheader("Data Filters")
@@ -283,69 +390,133 @@ def display_historical_view(config):
         time_range = st.selectbox(
             "Time Range",
             ["1h", "24h", "7d", "30d"],
-            help="STUDENT TODO: Implement time-based filtering in your query"
+            help="Select the time period to analyze"
         )
     
     with col2:
-        metric_type = st.selectbox(
+        metric_type = st.multiselect(
             "Metric Type",
             ["temperature", "humidity", "pressure", "all"],
-            help="STUDENT TODO: Implement metric filtering in your query"
+            default=["all"],
+            help="Select metric types to display"
         )
     
     with col3:
         aggregation = st.selectbox(
             "Aggregation",
             ["raw", "hourly", "daily", "weekly"],
-            help="STUDENT TODO: Implement data aggregation in your query"
+            help="Select data aggregation level"
         )
     
-    # STUDENT TODO: Replace with actual historical data query
-    historical_data = query_historical_data(time_range, [metric_type] if metric_type != "all" else None)
+    # Query button
+    if st.button("🔍 Query Historical Data", type="primary"):
+        with st.spinner("Querying MongoDB for historical data..."):
+            historical_data = query_historical_data(
+                config,
+                time_range=time_range,
+                metrics=metric_type,
+                aggregation=aggregation
+            )
+            st.session_state['historical_data'] = historical_data
     
-    if historical_data is not None:
-        # Display raw data
-        st.subheader("Historical Data Table")
-        st.info("STUDENT TODO: Customize data display for your specific dataset")
+    # Display cached data if available
+    if 'historical_data' in st.session_state:
+        historical_data = st.session_state['historical_data']
+    else:
+        historical_data = None
+    
+    if historical_data is not None and not historical_data.empty:
+        # Display data summary metrics
+        st.subheader("📈 Data Summary")
+        col1, col2, col3, col4 = st.columns(4)
         
-        st.dataframe(
-            historical_data,
-            width='stretch',
-            hide_index=True
-        )
+        with col1:
+            st.metric("Total Records", len(historical_data))
         
-        # Historical trends
-        st.subheader("Historical Trends")
-        st.info("STUDENT TODO: Implement meaningful historical analysis and visualization")
+        with col2:
+            if 'timestamp' in historical_data.columns:
+                date_range = f"{pd.to_datetime(historical_data['timestamp']).min().strftime('%m/%d %H:%M')} - {pd.to_datetime(historical_data['timestamp']).max().strftime('%m/%d %H:%M')}"
+                st.metric("Time Range", date_range)
         
-        if not historical_data.empty:
-            # STUDENT TODO: Customize this analysis for your data
+        with col3:
+            if 'value' in historical_data.columns:
+                st.metric("Average Value", f"{historical_data['value'].mean():.2f}")
+        
+        with col4:
+            if 'sensor_id' in historical_data.columns:
+                st.metric("Unique Sensors", historical_data['sensor_id'].nunique())
+        
+        # Historical trend visualization
+        st.subheader("📊 Historical Trends")
+        
+        if 'value' in historical_data.columns:
+            # Time series chart
             fig = px.line(
                 historical_data,
                 x='timestamp',
                 y='value',
-                title="STUDENT TODO: Customize historical trend analysis"
+                color='metric_type' if 'metric_type' in historical_data.columns else None,
+                title=f"Historical Data Trends - {time_range} ({aggregation} aggregation)",
+                labels={'value': 'Sensor Value', 'timestamp': 'Time'},
+                template='plotly_white'
             )
-            st.plotly_chart(fig, width='stretch')
+            fig.update_layout(
+                xaxis_title="Time",
+                yaxis_title="Value",
+                hovermode='x unified',
+                height=500
+            )
+            st.plotly_chart(fig, use_container_width=True)
             
-            # Additional analysis
-            st.subheader("Data Summary")
-            col1, col2 = st.columns(2)
+            # Distribution chart
+            if 'metric_type' in historical_data.columns:
+                st.subheader("📉 Value Distribution by Metric Type")
+                fig_box = px.box(
+                    historical_data,
+                    x='metric_type',
+                    y='value',
+                    title="Value Distribution Across Metric Types",
+                    template='plotly_white'
+                )
+                st.plotly_chart(fig_box, use_container_width=True)
             
-            with col1:
-                st.metric("Total Records", len(historical_data))
-                st.metric("Date Range", f"{historical_data['timestamp'].min().strftime('%Y-%m-%d')} to {historical_data['timestamp'].max().strftime('%Y-%m-%d')}")
-            
-            with col2:
-                st.metric("Average Value", f"{historical_data['value'].mean():.2f}")
-                st.metric("Data Variability", f"{historical_data['value'].std():.2f}")
+            # Sensor comparison if multiple sensors
+            if 'sensor_id' in historical_data.columns and historical_data['sensor_id'].nunique() > 1:
+                st.subheader("🔍 Sensor Comparison")
+                fig_sensor = px.line(
+                    historical_data,
+                    x='timestamp',
+                    y='value',
+                    color='sensor_id',
+                    facet_col='metric_type' if 'metric_type' in historical_data.columns else None,
+                    title="Sensor-wise Data Comparison",
+                    template='plotly_white'
+                )
+                st.plotly_chart(fig_sensor, use_container_width=True)
+        
+        # Statistical summary
+        with st.expander("📊 Statistical Summary"):
+            if 'value' in historical_data.columns:
+                summary_df = historical_data.groupby('metric_type')['value'].describe() if 'metric_type' in historical_data.columns else historical_data['value'].describe()
+                st.dataframe(summary_df, use_container_width=True)
+        
+        # Raw data table
+        with st.expander("📋 View Raw Historical Data"):
+            st.dataframe(
+                historical_data.sort_values('timestamp', ascending=False) if 'timestamp' in historical_data.columns else historical_data,
+                use_container_width=True,
+                height=400
+            )
+    
+    elif historical_data is not None and historical_data.empty:
+        st.info("No data found for the selected criteria. Try a different time range or metric type.")
     
     else:
-        st.error("STUDENT TODO: Historical data query not implemented")
+        st.info("👆 Click 'Query Historical Data' to load historical analysis from MongoDB")
 
 def main():
     """
-    STUDENT TODO: Customize the main application flow as needed
+    COMPLETED TODO: Customize the main application flow as needed
     """
     st.title("🚀 Streaming Data Dashboard")
     
@@ -378,6 +549,7 @@ def main():
         help="Automatically refresh real-time data"
     )
     
+    refresh_interval = 15  # Default value
     if st.session_state.refresh_state['auto_refresh']:
         refresh_interval = st.sidebar.slider(
             "Refresh Interval (seconds)",

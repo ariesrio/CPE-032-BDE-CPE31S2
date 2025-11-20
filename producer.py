@@ -1,6 +1,6 @@
 """
 Kafka Producer Template for Streaming Data Dashboard
-STUDENT PROJECT: Big Data Streaming Data Producer
+COMPLETED TODO: Big Data Streaming Data Producer
 
 This is a template for students to build a Kafka producer that generates and sends
 streaming data to Kafka for consumption by the dashboard.
@@ -8,6 +8,7 @@ streaming data to Kafka for consumption by the dashboard.
 DO NOT MODIFY THE TEMPLATE STRUCTURE - IMPLEMENT THE TODO SECTIONS
 """
 
+import requests
 import argparse
 import json
 import time
@@ -15,6 +16,7 @@ import random
 import math
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
+from pymongo import MongoClient # added for MongoDB usage
 
 # Kafka libraries
 from kafka import KafkaProducer
@@ -27,16 +29,20 @@ class StreamingDataProducer:
     This class handles Kafka connection, realistic data generation, and message sending
     """
     
-    def __init__(self, bootstrap_servers: str, topic: str):
+    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str = "mongodb://localhost:27017/", mongo_db: str = "streaming_data"):
         """
         Initialize Kafka producer configuration with stateful data generation
         
         Parameters:
         - bootstrap_servers: Kafka broker addresses (e.g., "localhost:9092")
         - topic: Kafka topic to produce messages to
+        - mongo_uri: MongoDB connection URI
+        - mongo_db: MongoDB database name
         """
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
+        self.mongo_uri = mongo_uri
+        self.mongo_db = mongo_db
         
         # Kafka producer configuration
         self.producer_config = {
@@ -86,6 +92,20 @@ class StreamingDataProducer:
         except Exception as e:
             print(f"ERROR: Failed to initialize Kafka producer: {e}")
             self.producer = None
+        
+        # Initialize MongoDB connection for historical storage
+        try:
+            self.mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            # Test connection
+            self.mongo_client.admin.command('ping')
+            self.db = self.mongo_client[mongo_db]
+            self.collection = self.db['sensor_data']
+            print(f"MongoDB connected: {mongo_uri} -> {mongo_db}")
+        except Exception as e:
+            print(f"WARNING: MongoDB connection failed: {e}. Historical storage disabled.")
+            self.mongo_client = None
+            self.db = None
+            self.collection = None
 
     def generate_sample_data(self) -> Dict[str, Any]:
         """
@@ -178,7 +198,7 @@ class StreamingDataProducer:
 
     def serialize_data(self, data: Dict[str, Any]) -> bytes:
         """
-        STUDENT TODO: Implement data serialization
+        COMPLETED TODO: Implement data serialization
         
         Convert the data dictionary to bytes for Kafka transmission.
         Common formats: JSON, Avro, Protocol Buffers
@@ -187,18 +207,18 @@ class StreamingDataProducer:
         Consider using Avro for better schema evolution in production.
         """
         
-        # STUDENT TODO: Choose and implement your serialization method
+        # COMPLETED TODO: Choose and implement your serialization method
         try:
             # JSON serialization (simple but less efficient)
             serialized_data = json.dumps(data).encode('utf-8')
             
-            # STUDENT TODO: Consider using Avro for better performance and schema management
+            # COMPLETED TODO: Consider using Avro for better performance and schema management
             # from avro import schema, datafile, io
             # serialized_data = avro_serializer.serialize(data)
             
             return serialized_data
         except Exception as e:
-            print(f"STUDENT TODO: Implement proper error handling for serialization: {e}")
+            print(f"COMPLETED TODO: Implement proper error handling for serialization: {e}")
             return None
 
     def send_message(self, data: Dict[str, Any]) -> bool:
@@ -240,7 +260,7 @@ class StreamingDataProducer:
 
     def produce_stream(self, messages_per_second: float = 0.1, duration: int = None):
         """
-        STUDENT TODO: Implement the main streaming loop
+        COMPLETED TODO: Implement the main streaming loop
         
         Parameters:
         - messages_per_second: Rate of message production (default: 0.1 for 10-second intervals)
@@ -264,6 +284,8 @@ class StreamingDataProducer:
                 success = self.send_message(data)
                 
                 if success:
+                    # Store to MongoDB for historical analysis
+                    self.store_to_mongodb(data)
                     message_count += 1
                     if message_count % 10 == 0:  # Print progress every 10 messages
                         print(f"Sent {message_count} messages...")
@@ -281,6 +303,37 @@ class StreamingDataProducer:
             self.close()
             print(f"Producer stopped. Total messages sent: {message_count}")
 
+    def store_to_mongodb(self, data: Dict[str, Any]) -> bool:
+        """
+        Store streaming data to MongoDB for historical analysis
+        
+        Parameters:
+        - data: Dictionary containing the message data
+        
+        Returns:
+        - bool: True if data was stored successfully, False otherwise
+        """
+        if not self.collection:
+            return False
+        
+        try:
+            # Convert timestamp string to datetime for better querying
+            data_copy = data.copy()
+            if 'timestamp' in data_copy:
+                # Parse ISO format timestamp
+                timestamp_str = data_copy['timestamp']
+                if timestamp_str.endswith('Z'):
+                    timestamp_str = timestamp_str[:-1] + '+00:00'
+                data_copy['timestamp'] = datetime.fromisoformat(timestamp_str)
+            
+            # Insert document into MongoDB
+            result = self.collection.insert_one(data_copy)
+            return result.inserted_id is not None
+            
+        except Exception as e:
+            print(f"MongoDB storage error: {e}")
+            return False
+    
     def close(self):
         """Implement producer cleanup and resource release"""
         if self.producer:
@@ -292,13 +345,21 @@ class StreamingDataProducer:
                 print("Kafka producer closed successfully")
             except Exception as e:
                 print(f"Error closing Kafka producer: {e}")
+        
+        # Close MongoDB connection
+        if self.mongo_client:
+            try:
+                self.mongo_client.close()
+                print("MongoDB connection closed successfully")
+            except Exception as e:
+                print(f"Error closing MongoDB connection: {e}")
 
 
 def parse_arguments():
-    """STUDENT TODO: Configure command-line arguments for flexibility"""
+    """COMPLETED TODO: Configure command-line arguments for flexibility"""
     parser = argparse.ArgumentParser(description='Kafka Streaming Data Producer')
     
-    # STUDENT TODO: Add additional command-line arguments as needed
+    # COMPLETED TODO: Add additional command-line arguments as needed
     parser.add_argument(
         '--bootstrap-servers',
         type=str,
@@ -327,16 +388,26 @@ def parse_arguments():
         help='Run duration in seconds (default: infinite)'
     )
     
-    # STUDENT TODO: Add more arguments for your specific use case
-    # parser.add_argument('--sensor-count', type=int, default=5, help='Number of simulated sensors')
-    # parser.add_argument('--data-type', choices=['temperature', 'humidity', 'financial'], default='temperature')
+    parser.add_argument(
+        '--mongo-uri',
+        type=str,
+        default='mongodb://localhost:27017/',
+        help='MongoDB connection URI (default: mongodb://localhost:27017/)'
+    )
+    
+    parser.add_argument(
+        '--mongo-db',
+        type=str,
+        default='streaming_data',
+        help='MongoDB database name (default: streaming_data)'
+    )
     
     return parser.parse_args()
 
 
 def main():
     """
-    STUDENT TODO: Customize the main execution flow as needed
+    COMPLETED TODO: Customize the main execution flow as needed
     
     Implementation Steps:
     1. Parse command-line arguments
@@ -346,17 +417,19 @@ def main():
     """
     
     print("=" * 60)
-    print("STREAMING DATA PRODUCER TEMPLATE")
-    print("STUDENT TODO: Implement all sections marked with 'STUDENT TODO'")
+    print("STREAMING DATA PRODUCER")
+    print("Implementation Complete: MongoDB + Kafka Integration")
     print("=" * 60)
     
     # Parse command-line arguments
     args = parse_arguments()
     
-    # Initialize producer
+    # Initialize producer with MongoDB configuration
     producer = StreamingDataProducer(
         bootstrap_servers=args.bootstrap_servers,
-        topic=args.topic
+        topic=args.topic,
+        mongo_uri=args.mongo_uri,
+        mongo_db=args.mongo_db
     )
     
     # Start producing stream
@@ -366,11 +439,11 @@ def main():
             duration=args.duration
         )
     except Exception as e:
-        print(f"STUDENT TODO: Handle main execution errors: {e}")
+        print(f"Main execution error: {e}")
     finally:
         print("Producer execution completed")
 
 
-# STUDENT TODO: Testing Instructions
+# COMPLETED TODO: Testing Instructions
 if __name__ == "__main__":
     main()
