@@ -1,0 +1,3 @@
+[2025-11-20 04:53:11,470] INFO [Broker id=1] Transitioning 1 partition(s) to local leaders. (state.change.logger)
+[2025-11-20 04:53:11,474] INFO [Broker id=1] Creating new partition streaming-data-0 with topic id 4pdP-DeRRYCXkYTFB8KWLw. (state.change.logger)
+[2025-11-20 04:53:11,531] INFO [Broker id=1] Leader streaming-data-0 with topic id Some(4pdP-DeRRYCXkYTFB8KWLw) starts at leader epoch 0 from offset 0 with partition epoch 0, high watermark 0, ISR [1], adding replicas [] and removing replicas [] . Previous leader None and previous leader epoch was -1. (state.change.logger)

@@ -1,304 +1,258 @@
-"""
-Kafka Producer Template for Streaming Data Dashboard
-STUDENT PROJECT: Big Data Streaming Data Producer
-
-This is a template for students to build a Kafka producer that generates and sends
-streaming data to Kafka for consumption by the dashboard.
-
-DO NOT MODIFY THE TEMPLATE STRUCTURE - IMPLEMENT THE TODO SECTIONS
-"""
+import os
+import certifi
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 import argparse
 import json
 import time
-import random
-import math
-from datetime import datetime, timedelta
+import requests
+from datetime import datetime
 from typing import Dict, Any, List
-
-# Kafka libraries
 from kafka import KafkaProducer
 from kafka.errors import KafkaError, NoBrokersAvailable
+from pymongo import MongoClient
 
+class CoinGeckoCryptoProducer:
+    """
+    Kafka producer for CoinGecko API cryptocurrency data streaming
+    Free tier: 10,000 calls/month, 30 calls/minute (Much better than Alpha Vantage!)
+    """
 
-class StreamingDataProducer:
-    """
-    Enhanced Kafka producer with stateful synthetic data generation
-    This class handles Kafka connection, realistic data generation, and message sending
-    """
-    
-    def __init__(self, bootstrap_servers: str, topic: str):
-        """
-        Initialize Kafka producer configuration with stateful data generation
-        
-        Parameters:
-        - bootstrap_servers: Kafka broker addresses (e.g., "localhost:9092")
-        - topic: Kafka topic to produce messages to
-        """
+    def __init__(self, bootstrap_servers: str, topic: str, mongo_uri: str, symbols: List[str], api_key: str = None):
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
+        self.symbols = symbols
+        self.base_url = "https://api.coingecko.com/api/v3"
+        self.api_key = api_key
         
         # Kafka producer configuration
-        self.producer_config = {
-            'bootstrap_servers': bootstrap_servers,
-            # 'security_protocol': 'SSL',  # If using SSL
-            # 'ssl_cafile': 'path/to/ca.pem',  # If using SSL
-            # 'ssl_certfile': 'path/to/service.cert',  # If using SSL
-            # 'ssl_keyfile': 'path/to/service.key',  # If using SSL
-            # 'compression_type': 'gzip',  # Optional: Enable compression
-            # 'batch_size': 16384,  # Optional: Tune batch size
-            # 'linger_ms': 10,  # Optional: Wait for batch fill
-        }
-        
-        # Stateful data generation attributes
-        self.sensor_states = {}  # Track state for each sensor
-        self.time_counter = 0    # Track time progression
-        self.base_time = datetime.utcnow()
-        
-        # Expanded sensor pool with metadata
-        self.sensors = [
-            {"id": "sensor_001", "location": "server_room_a", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_002", "location": "server_room_b", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_003", "location": "outdoor_north", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_004", "location": "lab_1", "type": "humidity", "unit": "percent"},
-            {"id": "sensor_005", "location": "lab_2", "type": "humidity", "unit": "percent"},
-            {"id": "sensor_006", "location": "control_room", "type": "pressure", "unit": "hPa"},
-            {"id": "sensor_007", "location": "factory_floor", "type": "pressure", "unit": "hPa"},
-            {"id": "sensor_008", "location": "warehouse", "type": "temperature", "unit": "celsius"},
-            {"id": "sensor_009", "location": "office_area", "type": "humidity", "unit": "percent"},
-            {"id": "sensor_010", "location": "basement", "type": "pressure", "unit": "hPa"},
-        ]
-        
-        # Metric type configurations
-        self.metric_ranges = {
-            "temperature": {"min": -10, "max": 45, "daily_amplitude": 8, "trend_range": (-0.5, 0.5)},
-            "humidity": {"min": 20, "max": 95, "daily_amplitude": 15, "trend_range": (-0.2, 0.2)},
-            "pressure": {"min": 980, "max": 1040, "daily_amplitude": 5, "trend_range": (-0.1, 0.1)},
-        }
-        
-        # Initialize Kafka producer
         try:
-            self.producer = KafkaProducer(**self.producer_config)
-            print(f"Kafka producer initialized for {bootstrap_servers} on topic {topic}")
+            self.producer = KafkaProducer(
+                bootstrap_servers=bootstrap_servers,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                acks='all',
+                retries=3,
+                max_in_flight_requests_per_connection=1
+            )
+            print(f"✓ Kafka producer initialized: {bootstrap_servers} -> {topic}")
         except NoBrokersAvailable:
-            print(f"ERROR: No Kafka brokers available at {bootstrap_servers}")
+            print(f"✗ ERROR: No Kafka brokers available at {bootstrap_servers}")
             self.producer = None
         except Exception as e:
-            print(f"ERROR: Failed to initialize Kafka producer: {e}")
+            print(f"✗ ERROR: Failed to initialize Kafka producer: {e}")
             self.producer = None
-
-    def generate_sample_data(self) -> Dict[str, Any]:
-        """
-        Generate realistic streaming data with stateful patterns
         
-        This function creates continuously changing records with realistic patterns:
-        - Daily cycles using sine waves
-        - Gradual trends and realistic noise
-        - Multiple metric types (temperature, humidity, pressure)
-        - Temporal consistency with progressive timestamps
-        
-        Expected data format (must include these fields for dashboard compatibility):
-        {
-            "timestamp": "2023-10-01T12:00:00Z",  # ISO format timestamp
-            "value": 123.45,                      # Numeric measurement value
-            "metric_type": "temperature",         # Type of metric (temperature, humidity, etc.)
-            "sensor_id": "sensor_001",            # Unique identifier for data source
-            "location": "server_room_a",          # Sensor location
-            "unit": "celsius",                    # Measurement unit
-        }
-        """
-        
-        # Select a random sensor from the expanded pool
-        sensor = random.choice(self.sensors)
-        sensor_id = sensor["id"]
-        metric_type = sensor["type"]
-        
-        # Initialize sensor state if not exists
-        if sensor_id not in self.sensor_states:
-            config = self.metric_ranges[metric_type]
-            base_value = random.uniform(config["min"], config["max"])
-            trend = random.uniform(config["trend_range"][0], config["trend_range"][1])
-            phase_offset = random.uniform(0, 2 * 3.14159)  # Random phase for daily cycle
-            
-            self.sensor_states[sensor_id] = {
-                "base_value": base_value,
-                "trend": trend,
-                "phase_offset": phase_offset,
-                "last_value": base_value,
-                "message_count": 0
-            }
-        
-        state = self.sensor_states[sensor_id]
-        
-        # Calculate progressive timestamp with configurable intervals
-        current_time = self.base_time + timedelta(seconds=self.time_counter)
-        self.time_counter += random.uniform(0.5, 2.0)  # Variable intervals for realism
-        
-        # Generate realistic value with patterns
-        config = self.metric_ranges[metric_type]
-        
-        # Daily cycle using sine wave (24-hour period)
-        hours_in_day = 24
-        current_hour = current_time.hour + current_time.minute / 60
-        daily_cycle = math.sin(2 * 3.14159 * current_hour / hours_in_day + state["phase_offset"])
-        
-        # Apply trend over time (slow drift)
-        trend_effect = state["trend"] * (state["message_count"] / 100.0)
-        
-        # Add realistic noise (small random variations)
-        noise = random.uniform(-config["daily_amplitude"] * 0.1, config["daily_amplitude"] * 0.1)
-        
-        # Calculate final value with bounds checking
-        base_value = state["base_value"]
-        daily_variation = daily_cycle * config["daily_amplitude"]
-        raw_value = base_value + daily_variation + trend_effect + noise
-        
-        # Ensure value stays within reasonable bounds
-        bounded_value = max(config["min"], min(config["max"], raw_value))
-        
-        # Update state
-        state["last_value"] = bounded_value
-        state["message_count"] += 1
-        
-        # Occasionally introduce small trend changes for realism
-        if random.random() < 0.01:  # 1% chance per message
-            state["trend"] = random.uniform(config["trend_range"][0], config["trend_range"][1])
-        
-        # Generate realistic data structure
-        sample_data = {
-            "timestamp": current_time.isoformat() + 'Z',
-            "value": round(bounded_value, 2),
-            "metric_type": metric_type,
-            "sensor_id": sensor_id,
-            "location": sensor["location"],
-            "unit": sensor["unit"],
-        }
-        
-        return sample_data
-
-    def serialize_data(self, data: Dict[str, Any]) -> bytes:
-        """
-        STUDENT TODO: Implement data serialization
-        
-        Convert the data dictionary to bytes for Kafka transmission.
-        Common formats: JSON, Avro, Protocol Buffers
-        
-        For simplicity, we use JSON serialization in this template.
-        Consider using Avro for better schema evolution in production.
-        """
-        
-        # STUDENT TODO: Choose and implement your serialization method
+        # MongoDB connection for historical storage
         try:
-            # JSON serialization (simple but less efficient)
-            serialized_data = json.dumps(data).encode('utf-8')
-            
-            # STUDENT TODO: Consider using Avro for better performance and schema management
-            # from avro import schema, datafile, io
-            # serialized_data = avro_serializer.serialize(data)
-            
-            return serialized_data
+            self.mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            self.db = self.mongo_client['crypto_streaming']
+            self.collection = self.db['crypto_data']
+            # Test connection
+            self.mongo_client.admin.command('ping')
+            print(f"✓ MongoDB connected successfully")
         except Exception as e:
-            print(f"STUDENT TODO: Implement proper error handling for serialization: {e}")
+            print(f"✗ ERROR: Failed to connect to MongoDB: {e}")
+            self.mongo_client = None
+            self.collection = None
+
+    def fetch_crypto_data(self, coin_id: str) -> Dict[str, Any]:
+        """
+        Fetch current cryptocurrency data from CoinGecko API
+        Coin IDs: bitcoin, ethereum, binancecoin, tether, etc.
+        """
+        try:
+            # Prepare headers
+            headers = {}
+            if self.api_key:
+                headers['x-cg-demo-api-key'] = self.api_key
+            
+            # Get price data with market stats
+            params = {
+                'ids': coin_id,
+                'vs_currencies': 'usd',
+                'include_market_cap': 'true',
+                'include_24hr_vol': 'true',
+                'include_24hr_change': 'true',
+                'include_last_updated_at': 'true'
+            }
+            
+            price_url = f"{self.base_url}/simple/price"
+            response = requests.get(price_url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            price_data = response.json()
+            
+            if coin_id not in price_data:
+                print(f"✗ No data returned for {coin_id}")
+                return None
+            
+            coin_data = price_data[coin_id]
+            
+            # Format data matching our schema
+            data = {
+                'timestamp': datetime.now().isoformat() + 'Z',
+                'value': float(coin_data['usd']),
+                'metric_type': 'crypto_price',
+                'sensor_id': coin_id.upper(),
+                'symbol': coin_id.upper(),
+                'from_currency': coin_id.capitalize(),
+                'from_currency_name': coin_id.capitalize(),
+                'to_currency': 'USD',
+                'to_currency_name': 'US Dollar',
+                'exchange_rate': float(coin_data['usd']),
+                'last_refreshed': datetime.now().isoformat(),
+                'timezone': 'UTC',
+                'bid_price': float(coin_data['usd']) * 0.9995,  # Approximate bid
+                'ask_price': float(coin_data['usd']) * 1.0005,  # Approximate ask
+                'market_cap': float(coin_data.get('usd_market_cap', 0)),
+                'volume_24h': float(coin_data.get('usd_24h_vol', 0)),
+                'price_change_24h': float(coin_data.get('usd_24h_change', 0)),
+                'price_change_percent_24h': float(coin_data.get('usd_24h_change', 0)),
+                'last_updated': coin_data.get('last_updated_at', int(time.time()))
+            }
+            
+            return data
+            
+        except requests.exceptions.Timeout:
+            print(f"✗ Timeout fetching data for {coin_id}")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"✗ Request error for {coin_id}: {e}")
+            return None
+        except KeyError as e:
+            print(f"✗ Missing data field for {coin_id}: {e}")
+            return None
+        except Exception as e:
+            print(f"✗ Error fetching data for {coin_id}: {e}")
             return None
 
-    def send_message(self, data: Dict[str, Any]) -> bool:
-        """
-        Implement message sending to Kafka
-        
-        Parameters:
-        - data: Dictionary containing the message data
-        
-        Returns:
-        - bool: True if message was sent successfully, False otherwise
-        """
-        
-        # Check if producer is initialized
-        if not self.producer:
-            print("ERROR: Kafka producer not initialized")
-            return False
-        
-        # Serialize the data
-        serialized_data = self.serialize_data(data)
-        if not serialized_data:
-            print("ERROR: Serialization failed")
+    def send_to_kafka(self, data: Dict[str, Any]) -> bool:
+        """Send data to Kafka topic"""
+        if self.producer is None or not data:
             return False
         
         try:
-            # Send message to Kafka
-            future = self.producer.send(self.topic, value=serialized_data)
-            # Wait for send confirmation with timeout
-            result = future.get(timeout=10)
-            print(f"Message sent successfully - Topic: {self.topic}, Data: {data}")
+            future = self.producer.send(self.topic, value=data)
+            future.get(timeout=10)
             return True
-            
-        except KafkaError as e:
-            print(f"Kafka send error: {e}")
-            return False
         except Exception as e:
-            print(f"Unexpected error during send: {e}")
+            print(f"✗ Kafka send error: {e}")
             return False
 
-    def produce_stream(self, messages_per_second: float = 0.1, duration: int = None):
+    def store_to_mongodb(self, data: Dict[str, Any]) -> bool:
+        """Store data to MongoDB for historical queries"""
+        if self.collection is None or not data:
+            return False
+        
+        try:
+            # Create a copy to avoid modifying original
+            mongo_data = data.copy()
+            mongo_data['_id'] = f"{data['sensor_id']}_{data['timestamp']}"
+            mongo_data['inserted_at'] = datetime.utcnow()
+            
+            self.collection.insert_one(mongo_data)
+            return True
+        except Exception as e:
+            # Duplicate key errors are expected (same timestamp)
+            if 'duplicate key error' not in str(e).lower():
+                print(f"✗ MongoDB insert error: {e}")
+            return False
+
+    def produce_stream(self, interval: float = 60):
         """
-        STUDENT TODO: Implement the main streaming loop
+        Main streaming loop
+        Fetches crypto data and sends to Kafka and MongoDB
         
-        Parameters:
-        - messages_per_second: Rate of message production (default: 0.1 for 10-second intervals)
-        - duration: Total runtime in seconds (None for infinite)
+        Args:
+            interval: seconds between data fetches (default: 60)
         """
+        print(f"\n{'='*60}")
+        print(f"Starting CoinGecko Crypto Stream")
+        print(f"Symbols: {', '.join(self.symbols)}")
+        print(f"Interval: {interval} seconds")
+        print(f"Note: CoinGecko free tier = 10,000 calls/month, 30/min")
+        print(f"{'='*60}\n")
         
-        print(f"Starting producer: {messages_per_second} msg/sec ({1/messages_per_second:.1f} second intervals), duration: {duration or 'infinite'}")
-        
-        start_time = time.time()
         message_count = 0
+        successful_symbols = []
         
         try:
             while True:
-                # Check if we've reached the duration limit
-                if duration and (time.time() - start_time) >= duration:
-                    print(f"Reached duration limit of {duration} seconds")
-                    break
+                cycle_start = time.time()
                 
-                # Generate and send data
-                data = self.generate_sample_data()
-                success = self.send_message(data)
+                for symbol in self.symbols:
+                    data = self.fetch_crypto_data(symbol)
+                    
+                    if data:
+                        # Send to Kafka
+                        kafka_success = self.send_to_kafka(data)
+                        
+                        # Store to MongoDB
+                        mongo_success = self.store_to_mongodb(data)
+                        
+                        if kafka_success:
+                            message_count += 1
+                            status = "✓ Kafka" + (" + MongoDB" if mongo_success else "")
+                            change_emoji = "📈" if data.get('price_change_percent_24h', 0) > 0 else "📉"
+                            print(f"{status} | {symbol.upper()}: ${data['value']:,.4f} {change_emoji} {data.get('price_change_percent_24h', 0):.2f}% | Count: {message_count}")
+                            
+                            if symbol not in successful_symbols:
+                                successful_symbols.append(symbol)
+                        else:
+                            print(f"⚠ Failed to send {symbol} to Kafka")
+                    else:
+                        print(f"⚠ Skipping {symbol} - no data received")
+                    
+                    # Rate limiting: respect 30 calls/min = 2 seconds between calls
+                    time.sleep(2)
                 
-                if success:
-                    message_count += 1
-                    if message_count % 10 == 0:  # Print progress every 10 messages
-                        print(f"Sent {message_count} messages...")
+                # Show summary of working symbols
+                if successful_symbols:
+                    print(f"\n✓ Successfully streaming: {', '.join([s.upper() for s in successful_symbols])}")
                 
-                # Calculate sleep time to maintain desired message rate
-                sleep_time = 1.0 / messages_per_second
-                time.sleep(sleep_time)
+                # Calculate wait time for next cycle
+                cycle_duration = time.time() - cycle_start
+                wait_time = max(0, interval - cycle_duration)
+                
+                if wait_time > 0:
+                    print(f"⏳ Waiting {wait_time:.0f}s until next cycle...\n")
+                    time.sleep(wait_time)
                 
         except KeyboardInterrupt:
-            print("\nProducer interrupted by user")
+            print("\n\n⚠ Producer interrupted by user")
         except Exception as e:
-            print(f"Streaming error: {e}")
+            print(f"\n✗ Streaming error: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
-            # Implement proper cleanup
             self.close()
-            print(f"Producer stopped. Total messages sent: {message_count}")
+            print(f"\n{'='*60}")
+            print(f"Producer stopped. Total messages: {message_count}")
+            print(f"{'='*60}")
 
     def close(self):
-        """Implement producer cleanup and resource release"""
-        if self.producer:
+        """Cleanup resources"""
+        if self.producer is not None:
             try:
-                # Ensure all messages are sent
                 self.producer.flush(timeout=10)
-                # Close producer connection
                 self.producer.close()
-                print("Kafka producer closed successfully")
+                print("✓ Kafka producer closed")
             except Exception as e:
-                print(f"Error closing Kafka producer: {e}")
-
+                print(f"✗ Error closing Kafka producer: {e}")
+        
+        if self.mongo_client is not None:
+            try:
+                self.mongo_client.close()
+                print("✓ MongoDB connection closed")
+            except Exception as e:
+                print(f"✗ Error closing MongoDB: {e}")
 
 def parse_arguments():
-    """STUDENT TODO: Configure command-line arguments for flexibility"""
-    parser = argparse.ArgumentParser(description='Kafka Streaming Data Producer')
+    """Command-line argument parser"""
+    parser = argparse.ArgumentParser(
+        description='CoinGecko API Cryptocurrency Data Streaming Producer (10K calls/month free!)'
+    )
     
-    # STUDENT TODO: Add additional command-line arguments as needed
     parser.add_argument(
         '--bootstrap-servers',
         type=str,
@@ -309,68 +263,66 @@ def parse_arguments():
     parser.add_argument(
         '--topic',
         type=str,
-        default='streaming-data',
-        help='Kafka topic to produce to (default: streaming-data)'
+        default='crypto-stream',
+        help='Kafka topic (default: crypto-stream)'
     )
     
     parser.add_argument(
-        '--rate',
-        type=float,
-        default=0.1,
-        help='Messages per second (default: 0.1 for 10-second intervals)'
+        '--mongo-uri',
+        type=str,
+        default='mongodb://localhost:27017/',
+        help='MongoDB connection URI'
     )
     
     parser.add_argument(
-        '--duration',
-        type=int,
+        '--api-key',
+        type=str,
         default=None,
-        help='Run duration in seconds (default: infinite)'
+        help='CoinGecko Demo API key (optional, get free at coingecko.com)'
     )
     
-    # STUDENT TODO: Add more arguments for your specific use case
-    # parser.add_argument('--sensor-count', type=int, default=5, help='Number of simulated sensors')
-    # parser.add_argument('--data-type', choices=['temperature', 'humidity', 'financial'], default='temperature')
+    parser.add_argument(
+        '--symbols',
+        type=str,
+        nargs='+',
+        default=['bitcoin', 'ethereum', 'binancecoin', 'tether', 'usd-coin'],
+        help='Crypto coin IDs from CoinGecko (default: bitcoin ethereum binancecoin tether usd-coin)'
+    )
+    
+    parser.add_argument(
+        '--interval',
+        type=float,
+        default=60,
+        help='Seconds between data fetches (default: 60, recommended for rate limits)'
+    )
     
     return parser.parse_args()
 
-
 def main():
-    """
-    STUDENT TODO: Customize the main execution flow as needed
+    """Main execution"""
+    print("\n" + "="*60)
+    print("COINGECKO API CRYPTOCURRENCY STREAMING PRODUCER")
+    print("="*60 + "\n")
     
-    Implementation Steps:
-    1. Parse command-line arguments
-    2. Initialize Kafka producer
-    3. Start streaming data
-    4. Handle graceful shutdown
-    """
-    
-    print("=" * 60)
-    print("STREAMING DATA PRODUCER TEMPLATE")
-    print("STUDENT TODO: Implement all sections marked with 'STUDENT TODO'")
-    print("=" * 60)
-    
-    # Parse command-line arguments
     args = parse_arguments()
     
-    # Initialize producer
-    producer = StreamingDataProducer(
+    print("Configuration:")
+    print(f"  Broker: {args.bootstrap_servers}")
+    print(f"  Topic: {args.topic}")
+    print(f"  Symbols: {', '.join(args.symbols)}")
+    print(f"  Interval: {args.interval}s")
+    print(f"  API Key: {'Yes' if args.api_key else 'No (using free tier)'}")
+    print()
+    
+    producer = CoinGeckoCryptoProducer(
         bootstrap_servers=args.bootstrap_servers,
-        topic=args.topic
+        topic=args.topic,
+        mongo_uri=args.mongo_uri,
+        symbols=args.symbols,
+        api_key=args.api_key
     )
     
-    # Start producing stream
-    try:
-        producer.produce_stream(
-            messages_per_second=args.rate,
-            duration=args.duration
-        )
-    except Exception as e:
-        print(f"STUDENT TODO: Handle main execution errors: {e}")
-    finally:
-        print("Producer execution completed")
+    producer.produce_stream(interval=args.interval)
 
-
-# STUDENT TODO: Testing Instructions
 if __name__ == "__main__":
     main()

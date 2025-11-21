@@ -1,0 +1,65 @@
+Collecting yfinance
+  Downloading yfinance-0.2.66-py2.py3-none-any.whl.metadata (6.0 kB)
+Requirement already satisfied: pandas>=1.3.0 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from yfinance) (2.3.3)
+Requirement already satisfied: numpy>=1.16.5 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from yfinance) (2.2.6)
+Requirement already satisfied: requests>=2.31 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from yfinance) (2.32.5)
+Collecting multitasking>=0.0.7 (from yfinance)
+  Downloading multitasking-0.0.12.tar.gz (19 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Requirement already satisfied: platformdirs>=2.0.0 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from yfinance) (4.5.0)
+Requirement already satisfied: pytz>=2022.5 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from yfinance) (2025.2)
+Collecting frozendict>=2.3.4 (from yfinance)
+  Downloading frozendict-2.4.7-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (23 kB)
+Collecting peewee>=3.16.2 (from yfinance)
+  Downloading peewee-3.18.3.tar.gz (3.0 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.0/3.0 MB 7.0 MB/s  0:00:00
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting beautifulsoup4>=4.11.1 (from yfinance)
+  Downloading beautifulsoup4-4.14.2-py3-none-any.whl.metadata (3.8 kB)
+Collecting curl_cffi>=0.7 (from yfinance)
+  Downloading curl_cffi-0.13.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (13 kB)
+Requirement already satisfied: protobuf>=3.19.0 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from yfinance) (6.33.0)
+Collecting websockets>=13.0 (from yfinance)
+  Downloading websockets-15.0.1-cp310-cp310-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+Collecting soupsieve>1.2 (from beautifulsoup4>=4.11.1->yfinance)
+  Downloading soupsieve-2.8-py3-none-any.whl.metadata (4.6 kB)
+Requirement already satisfied: typing-extensions>=4.0.0 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from beautifulsoup4>=4.11.1->yfinance) (4.15.0)
+Collecting cffi>=1.12.0 (from curl_cffi>=0.7->yfinance)
+  Downloading cffi-2.0.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.6 kB)
+Requirement already satisfied: certifi>=2024.2.2 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from curl_cffi>=0.7->yfinance) (2025.11.12)
+Collecting pycparser (from cffi>=1.12.0->curl_cffi>=0.7->yfinance)
+  Downloading pycparser-2.23-py3-none-any.whl.metadata (993 bytes)
+Requirement already satisfied: python-dateutil>=2.8.2 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from pandas>=1.3.0->yfinance) (2.9.0.post0)
+Requirement already satisfied: tzdata>=2022.7 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from pandas>=1.3.0->yfinance) (2025.2)
+Requirement already satisfied: six>=1.5 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from python-dateutil>=2.8.2->pandas>=1.3.0->yfinance) (1.17.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from requests>=2.31->yfinance) (3.4.4)
+Requirement already satisfied: idna<4,>=2.5 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from requests>=2.31->yfinance) (3.11)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /home/Aries/miniconda3/envs/bigdata/lib/python3.10/site-packages (from requests>=2.31->yfinance) (2.5.0)
+Downloading yfinance-0.2.66-py2.py3-none-any.whl (123 kB)
+Downloading beautifulsoup4-4.14.2-py3-none-any.whl (106 kB)
+Downloading curl_cffi-0.13.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (8.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8.3/8.3 MB 11.2 MB/s  0:00:00
+Downloading cffi-2.0.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (216 kB)
+Downloading frozendict-2.4.7-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (120 kB)
+Downloading soupsieve-2.8-py3-none-any.whl (36 kB)
+Downloading websockets-15.0.1-cp310-cp310-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (181 kB)
+Downloading pycparser-2.23-py3-none-any.whl (118 kB)
+Building wheels for collected packages: multitasking, peewee
+  Building wheel for multitasking (setup.py): started
+  Building wheel for multitasking (setup.py): finished with status 'done'
+  Created wheel for multitasking: filename=multitasking-0.0.12-py3-none-any.whl size=15636 sha256=36d8e390e8dae17a9df629d279ffacf6379356072259402e91d2a65536ddebfe
+  Stored in directory: /home/Aries/.cache/pip/wheels/e9/25/85/25d2e1cfc0ece64b930b16972f7e4cc3599c43b531f1eba06d
+  Building wheel for peewee (pyproject.toml): started
+  Building wheel for peewee (pyproject.toml): finished with status 'done'
+  Created wheel for peewee: filename=peewee-3.18.3-cp310-cp310-linux_x86_64.whl size=303887 sha256=4068ccf3d49a17e30345b1648e9455c801756a05c0342bc3881cce2ff5541841
+  Stored in directory: /home/Aries/.cache/pip/wheels/3d/96/39/80c50cbf6bd446cdca9dac7d78a1a0d3a1f313859500529f8d
+Successfully built multitasking peewee
+Installing collected packages: peewee, multitasking, websockets, soupsieve, pycparser, frozendict, cffi, beautifulsoup4, curl_cffi, yfinance
+
+Successfully installed beautifulsoup4-4.14.2 cffi-2.0.0 curl_cffi-0.13.0 frozendict-2.4.7 multitasking-0.0.12 peewee-3.18.3 pycparser-2.23 soupsieve-2.8 websockets-15.0.1 yfinance-0.2.66
