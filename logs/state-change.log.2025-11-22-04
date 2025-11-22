@@ -1,0 +1,3 @@
+[2025-11-22 04:55:17,559] INFO [Broker id=1] Transitioning 1 partition(s) to local leaders. (state.change.logger)
+[2025-11-22 04:55:17,565] INFO [Broker id=1] Creating new partition crypto-stream-0 with topic id yjLMhxSmRaKJOEfjaK5ovA. (state.change.logger)
+[2025-11-22 04:55:17,836] INFO [Broker id=1] Leader crypto-stream-0 with topic id Some(yjLMhxSmRaKJOEfjaK5ovA) starts at leader epoch 0 from offset 0 with partition epoch 0, high watermark 0, ISR [1], adding replicas [] and removing replicas [] . Previous leader None and previous leader epoch was -1. (state.change.logger)
